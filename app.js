@@ -110,7 +110,8 @@ function clone(value) {
 }
 
 function setAppVersion() {
-  el("appVersionText").textContent = CONFIG.APP_VERSION;
+  const target = el("appVersionText");
+  if (target) target.textContent = CONFIG.APP_VERSION;
 }
 
 async function loadMemberLists() {
@@ -187,59 +188,59 @@ function bindStaticEvents() {
     btn.addEventListener("click", () => showPage(btn.dataset.back));
   });
 
-  el("openSettingsBtn").addEventListener("click", openSettings);
-  el("closeSettingsBtn").addEventListener("click", closeSettings);
-  el("saveProfileBtn").addEventListener("click", saveProfileFromUi);
+  el("openSettingsBtn")?.addEventListener("click", openSettings);
+  el("closeSettingsBtn")?.addEventListener("click", closeSettings);
+  el("saveProfileBtn")?.addEventListener("click", saveProfileFromUi);
 
-  el("pagerUpload").addEventListener("change", handleImageUpload);
-  el("scanBtn").addEventListener("click", () => {
+  el("pagerUpload")?.addEventListener("change", handleImageUpload);
+  el("scanBtn")?.addEventListener("click", () => {
     el("scanStatus").textContent = "OCR is intentionally disabled in this hardened base build. Nail reliability first, then add OCR.";
   });
 
-  el("addSceneBrigadeBtn").addEventListener("click", addSceneBrigade);
-  el("sceneBrigadeSelect").addEventListener("change", () => {
+  el("addSceneBrigadeBtn")?.addEventListener("click", addSceneBrigade);
+  el("sceneBrigadeSelect")?.addEventListener("change", () => {
     el("sceneBrigadeOther").classList.toggle("hidden", el("sceneBrigadeSelect").value !== "Other");
   });
 
-  el("firstAgency").addEventListener("change", () => {
+  el("firstAgency")?.addEventListener("change", () => {
     el("firstAgencyOther").classList.toggle("hidden", el("firstAgency").value !== "Other");
     state.incident.firstAgency = el("firstAgency").value;
     scheduleDraftSave();
     renderEverything();
   });
 
-  el("firstAgencyOther").addEventListener("input", () => {
+  el("firstAgencyOther")?.addEventListener("input", () => {
     state.incident.firstAgencyOther = el("firstAgencyOther").value;
     scheduleDraftSave();
   });
 
-  el("addAgencyBtn").addEventListener("click", addAgency);
+  el("addAgencyBtn")?.addEventListener("click", addAgency);
 
-  el("flagMembersBeforeBtn").addEventListener("click", () => toggleFlag("membersBefore", "flagMembersBeforeBtn"));
-  el("flagAarBtn").addEventListener("click", () => toggleFlag("aar", "flagAarBtn"));
-  el("flagHotDebriefBtn").addEventListener("click", () => toggleFlag("hotDebrief", "flagHotDebriefBtn"));
+  el("flagMembersBeforeBtn")?.addEventListener("click", () => toggleFlag("membersBefore", "flagMembersBeforeBtn"));
+  el("flagAarBtn")?.addEventListener("click", () => toggleFlag("aar", "flagAarBtn"));
+  el("flagHotDebriefBtn")?.addEventListener("click", () => toggleFlag("hotDebrief", "flagHotDebriefBtn"));
 
-  el("resetFirsBtn").addEventListener("click", () => {
+  el("resetFirsBtn")?.addEventListener("click", () => {
     state.incident.firsCode = "";
     el("firsCode").value = "";
     scheduleDraftSave();
     updateReportSummary();
   });
 
-  el("finishBtn").addEventListener("click", finishReport);
-  el("saveLocalBtn").addEventListener("click", saveCurrentReport);
-  el("sendEmailBtn").addEventListener("click", sendEmail);
-  el("sendSmsBtn").addEventListener("click", sendSms);
+  el("finishBtn")?.addEventListener("click", finishReport);
+  el("saveLocalBtn")?.addEventListener("click", saveCurrentReport);
+  el("sendEmailBtn")?.addEventListener("click", sendEmail);
+  el("sendSmsBtn")?.addEventListener("click", sendSms);
 
-  el("saveDraftBtnIncident").addEventListener("click", forceDraftSave);
-  el("saveDraftBtnResponders").addEventListener("click", forceDraftSave);
-  el("saveDraftBtnSend").addEventListener("click", forceDraftSave);
+  el("saveDraftBtnIncident")?.addEventListener("click", forceDraftSave);
+  el("saveDraftBtnResponders")?.addEventListener("click", forceDraftSave);
+  el("saveDraftBtnSend")?.addEventListener("click", forceDraftSave);
 
-  el("clearDraftBtn").addEventListener("click", clearDraft);
-  el("reloadAppBtn").addEventListener("click", reloadForUpdate);
+  el("clearDraftBtn")?.addEventListener("click", clearDraft);
+  el("reloadAppBtn")?.addEventListener("click", reloadForUpdate);
 
-  el("copyAppLinkBtn").addEventListener("click", copyAppLink);
-  el("shareAppBtn").addEventListener("click", shareAppLink);
+  el("copyAppLinkBtn")?.addEventListener("click", copyAppLink);
+  el("shareAppBtn")?.addEventListener("click", shareAppLink);
 
   window.addEventListener("beforeunload", () => {
     saveDraft();
@@ -260,7 +261,7 @@ function bindIncidentEvents() {
   ];
 
   map.forEach(([id, key]) => {
-    el(id).addEventListener("input", (e) => {
+    el(id)?.addEventListener("input", (e) => {
       state.incident[key] = e.target.value;
 
       if (key === "brigadeCode") {
@@ -282,6 +283,8 @@ function bindConnectionEvents() {
 
 function updateConnectionBanner() {
   const banner = el("connectionBanner");
+  if (!banner) return;
+
   if (navigator.onLine) {
     banner.className = "status-banner online";
     banner.textContent = "Online. Drafts save locally on this device.";
@@ -325,11 +328,7 @@ function registerServiceWorker() {
 }
 
 function showUpdateBanner() {
-  el("updateBanner").classList.remove("hidden");
-}
-
-function hideUpdateBanner() {
-  el("updateBanner").classList.add("hidden");
+  el("updateBanner")?.classList.remove("hidden");
 }
 
 function reloadForUpdate() {
@@ -378,6 +377,8 @@ function addSceneBrigade() {
 
 function renderSceneBrigades() {
   const wrap = el("sceneBrigadeChips");
+  if (!wrap) return;
+
   wrap.innerHTML = "";
 
   state.incident.brigadesOnScene.forEach((code) => {
@@ -417,6 +418,8 @@ function addAgency() {
 
 function renderAgencies() {
   const wrap = el("agencyBlocks");
+  if (!wrap) return;
+
   wrap.innerHTML = "";
 
   state.agencies.forEach((agency) => {
@@ -518,6 +521,8 @@ function renderResponders() {
 
 function renderResponderGroup(groupKey, containerId, destinations) {
   const wrap = el(containerId);
+  if (!wrap) return;
+
   wrap.innerHTML = "";
 
   state.responders[groupKey].forEach((person, index) => {
@@ -560,7 +565,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
         </div>
       ` : ""}
 
-      ${person.destination ? `
+      ${person.name.trim() ? `
         <div class="responder-stage">
           <div class="stage-label">Flags</div>
           <div class="chips responder-flags"></div>
@@ -576,6 +581,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       updateOicBanner();
       updateReportSummary();
       scheduleDraftSave();
+      renderResponders();
     });
 
     card.querySelector(".tiny-btn").addEventListener("click", () => {
@@ -624,7 +630,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       });
     }
 
-    if (person.destination) {
+    if (person.name.trim()) {
       const flagsWrap = card.querySelector(".responder-flags");
       [
         ["BA", "ba"],
@@ -878,6 +884,8 @@ function saveCurrentReport() {
 
 function renderSavedReports() {
   const wrap = el("savedReports");
+  if (!wrap) return;
+
   wrap.innerHTML = "";
 
   if (!state.savedReports.length) {
@@ -1090,6 +1098,11 @@ function scheduleDraftSave() {
 function forceDraftSave() {
   clearTimeout(draftSaveTimer);
   saveDraft();
+  const stamp = new Date().toLocaleTimeString("en-AU", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+  updateDraftMeta(`Draft saved manually at ${stamp}.`);
 }
 
 function restoreDraftIfPresent() {
@@ -1116,6 +1129,7 @@ function restoreDraftIfPresent() {
 function renderDraftRestoreBanner() {
   const banner = el("draftRestoreBanner");
   const textEl = el("draftRestoreText");
+  if (!banner || !textEl) return;
 
   if (!state.ui.restoredDraft) {
     banner.classList.add("hidden");
@@ -1137,12 +1151,13 @@ function clearDraft() {
   localStorage.removeItem(STORAGE_KEYS.DRAFT);
   state.ui.restoredDraft = false;
   state.ui.lastDraftSavedAt = "";
-  el("draftRestoreBanner").classList.add("hidden");
+  el("draftRestoreBanner")?.classList.add("hidden");
   updateDraftMeta("Local draft cleared.");
 }
 
 function updateDraftMeta(message) {
-  el("draftMeta").textContent = message;
+  const target = el("draftMeta");
+  if (target) target.textContent = message;
 }
 
 async function copyAppLink() {
@@ -1169,9 +1184,4 @@ async function shareAppLink() {
     }
     await copyAppLink();
   } catch {}
-}
-
-function openQuietHoursNoticeIfNeeded() {
-  if (!isQuietHours()) return;
-  updateDraftMeta("Quiet hours warning: consider saving and sending later unless urgent.");
 }
