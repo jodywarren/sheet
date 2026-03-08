@@ -14,9 +14,11 @@
   <div class="app-shell">
     <header class="app-header">
       <div class="header-left">
-        <div>
-          <h1>TURNOUT SHEET</h1>
-          <p class="subtitle">Created by Jody Tuuta © 2026</p>
+        <div class="title-wrap">
+          <div>
+            <h1>TURNOUT SHEET</h1>
+            <p class="subtitle">Created by Jody Tuuta © 2026</p>
+          </div>
         </div>
       </div>
 
@@ -37,7 +39,6 @@
     </nav>
 
     <main class="main-content">
-      <!-- INCIDENT PAGE -->
       <section id="incidentPage" class="page active">
         <div class="page-card">
           <h2>Incident</h2>
@@ -47,7 +48,7 @@
               Upload Pager Screenshot
               <input type="file" id="pagerUpload" accept="image/*" />
             </label>
-            <button id="runOcrBtn" class="secondary-btn" type="button">Run OCR</button>
+            <button id="runOcrBtn" class="secondary-btn" type="button">Scan</button>
           </div>
 
           <div id="ocrStatus" class="status-text"></div>
@@ -101,7 +102,7 @@
 
             <label class="full-width">
               Address
-              <textarea id="address" rows="2" placeholder="123 MAIN ROAD&#10;ARMSTRONG CREEK"></textarea>
+              <textarea id="address" rows="2" placeholder="123 MAIN RD&#10;ARMSTRONG CREEK"></textarea>
             </label>
 
             <label>
@@ -112,10 +113,27 @@
               </div>
             </label>
 
-            <label class="full-width">
-              Brigades on Scene
-              <textarea id="brigadesOnScene" rows="2" placeholder="CONN, GROV, FRES"></textarea>
-            </label>
+            <div class="full-width brigade-scene-block">
+              <label>Brigades on Scene</label>
+              <div class="scene-brigades-toolbar">
+                <select id="brigadeOnSceneSelect">
+                  <option value="">Select brigade</option>
+                  <option value="CONN">CONN</option>
+                  <option value="GROV">GROV</option>
+                  <option value="FRES">FRES</option>
+                  <option value="P64">P64</option>
+                  <option value="P32">P32</option>
+                  <option value="P31">P31</option>
+                  <option value="P33">P33</option>
+                  <option value="P35">P35</option>
+                  <option value="P41">P41</option>
+                  <option value="Other">Other</option>
+                </select>
+                <input type="text" id="brigadeOnSceneOther" class="hidden" placeholder="Enter brigade code" />
+                <button id="addBrigadeOnSceneBtn" class="secondary-btn" type="button">Add Brigade</button>
+              </div>
+              <div id="brigadesOnSceneChips" class="chip-row chip-row-spaced"></div>
+            </div>
           </div>
 
           <div class="stacked-sections">
@@ -222,38 +240,32 @@
             </div>
 
             <div class="stack-item">
-              <button class="stack-toggle" data-target="hoseSection">Hose Use</button>
-              <div id="hoseSection" class="stack-content">
-                <div class="form-grid hose-grid">
-                  <label>64<input type="number" id="hose64" min="0" max="6" value="0" /></label>
-                  <label>38<input type="number" id="hose38" min="0" max="6" value="0" /></label>
-                  <label>25<input type="number" id="hose25" min="0" max="6" value="0" /></label>
-                  <label>Live Reel<input type="number" id="hoseLiveReel" min="0" max="6" value="0" /></label>
-                </div>
+              <button class="stack-toggle" data-target="firstAgencySection">First Agency On Scene</button>
+              <div id="firstAgencySection" class="stack-content">
+                <select id="firstAgencySelect">
+                  <option value="">Choose first agency</option>
+                  <option value="CFA">CFA</option>
+                  <option value="FRV">FRV</option>
+                  <option value="Police">Police</option>
+                  <option value="Ambulance">Ambulance</option>
+                  <option value="SES">SES</option>
+                  <option value="PowerCor">PowerCor</option>
+                  <option value="Gas">Gas</option>
+                  <option value="Other">Other</option>
+                </select>
+                <input type="text" id="firstAgencyOther" class="hidden top-gap" placeholder="Other agency" />
               </div>
             </div>
 
             <div class="stack-item">
-              <button class="stack-toggle" data-target="firstAgencySection">First Agency On Scene</button>
-              <div id="firstAgencySection" class="stack-content">
-                <label>
-                  First Agency
-                  <select id="firstAgencySelect">
-                    <option value="">Select</option>
-                    <option value="CFA">CFA</option>
-                    <option value="FRV">FRV</option>
-                    <option value="Police">Police</option>
-                    <option value="Ambulance">Ambulance</option>
-                    <option value="SES">SES</option>
-                    <option value="PowerCor">PowerCor</option>
-                    <option value="Gas">Gas</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </label>
-                <label id="firstAgencyOtherWrap" class="hidden">
-                  Other Agency
-                  <input type="text" id="firstAgencyOther" />
-                </label>
+              <button class="stack-toggle" data-target="hoseSection">Hose Use</button>
+              <div id="hoseSection" class="stack-content">
+                <div class="form-grid hose-grid">
+                  <label>64<input type="number" id="hose64" min="0" max="6" inputmode="numeric" /></label>
+                  <label>38<input type="number" id="hose38" min="0" max="6" inputmode="numeric" /></label>
+                  <label>25<input type="number" id="hose25" min="0" max="6" inputmode="numeric" /></label>
+                  <label>Live Reel<input type="number" id="hoseLiveReel" min="0" max="6" inputmode="numeric" /></label>
+                </div>
               </div>
             </div>
 
@@ -261,19 +273,16 @@
               <button class="stack-toggle" data-target="addAgencySection">Add Agency</button>
               <div id="addAgencySection" class="stack-content">
                 <div class="agency-toolbar">
-                  <label>
-                    Agency Type
-                    <select id="agencyType">
-                      <option value="">Select</option>
-                      <option value="Police">Police</option>
-                      <option value="Ambulance">Ambulance</option>
-                      <option value="PowerCor">PowerCor</option>
-                      <option value="Gas">Gas</option>
-                      <option value="SES">SES</option>
-                      <option value="Local Government">Local Government</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </label>
+                  <select id="agencyType">
+                    <option value="">Select agency</option>
+                    <option value="Police">Police</option>
+                    <option value="Ambulance">Ambulance</option>
+                    <option value="PowerCor">PowerCor</option>
+                    <option value="Gas">Gas</option>
+                    <option value="SES">SES</option>
+                    <option value="Local Government">Local Government</option>
+                    <option value="Other">Other</option>
+                  </select>
                   <button id="addAgencyBtn" class="secondary-btn" type="button">Add Agency</button>
                 </div>
                 <div id="agencyBlocks"></div>
@@ -281,10 +290,13 @@
             </div>
           </div>
 
-          <div class="flags-row">
-            <label><input type="checkbox" id="flagMembersBefore" /> Members before 1st appliance</label>
-            <label><input type="checkbox" id="flagAarRequired" /> AAR required</label>
-            <label><input type="checkbox" id="flagHotDebrief" /> Hot debrief conducted</label>
+          <div class="incident-flags-wrap">
+            <div class="stage-label">Incident Flags</div>
+            <div class="chip-row chip-row-spaced">
+              <button type="button" class="mini-chip" id="flagMembersBeforeBtn">Members before 1st appliance</button>
+              <button type="button" class="mini-chip" id="flagAarRequiredBtn">AAR required</button>
+              <button type="button" class="mini-chip" id="flagHotDebriefBtn">Hot debrief conducted</button>
+            </div>
           </div>
 
           <div class="notes-row">
@@ -300,7 +312,6 @@
         </div>
       </section>
 
-      <!-- RESPONDERS PAGE -->
       <section id="respondersPage" class="page">
         <div class="page-card">
           <h2>Responders</h2>
@@ -308,32 +319,12 @@
           <div class="stacked-sections">
             <div class="stack-item">
               <button class="stack-toggle open" data-target="connewarreResponders">Connewarre</button>
-              <div id="connewarreResponders" class="stack-content open">
-                <div class="appliance-group">
-                  <h3>Conn T1</h3>
-                  <div id="connT1SeatContainer" class="seat-container"></div>
-                </div>
-
-                <div class="appliance-group">
-                  <h3>Conn T2</h3>
-                  <div id="connT2SeatContainer" class="seat-container"></div>
-                </div>
-
-                <div class="appliance-group">
-                  <h3>Other</h3>
-                  <div id="connOtherSeatContainer" class="seat-container"></div>
-                </div>
-              </div>
+              <div id="connewarreResponders" class="stack-content open"></div>
             </div>
 
             <div class="stack-item">
               <button class="stack-toggle" data-target="mtdResponders">MTD</button>
-              <div id="mtdResponders" class="stack-content">
-                <div class="appliance-group">
-                  <h3>MTD P/T</h3>
-                  <div id="mtdPtSeatContainer" class="seat-container"></div>
-                </div>
-              </div>
+              <div id="mtdResponders" class="stack-content"></div>
             </div>
 
             <div class="stack-item">
@@ -343,13 +334,11 @@
                   <div class="appliance-group">
                     <h3>Direct Responders</h3>
                     <div id="directRespondersContainer"></div>
-                    <button class="secondary-btn add-responder-btn" type="button" data-list="direct">Add Direct Responder</button>
                   </div>
 
                   <div class="appliance-group">
                     <h3>Station Responders</h3>
                     <div id="stationRespondersContainer"></div>
-                    <button class="secondary-btn add-responder-btn" type="button" data-list="station">Add Station Responder</button>
                   </div>
                 </div>
               </div>
@@ -363,7 +352,6 @@
         </div>
       </section>
 
-      <!-- SEND PAGE -->
       <section id="sendPage" class="page">
         <div class="page-card">
           <h2>Send Report</h2>
@@ -398,7 +386,6 @@
     </main>
   </div>
 
-  <!-- SETTINGS MODAL -->
   <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="modal-card">
       <div class="modal-header">
