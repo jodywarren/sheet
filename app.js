@@ -1,5 +1,5 @@
 const CONFIG = {
-  APP_VERSION: "2.0.0",
+  APP_VERSION: "2.0.1",
   MAX_REPORTS: 10,
   DRAFT_SAVE_DELAY_MS: 300,
   QUIET_HOURS_START: 22,
@@ -7,9 +7,9 @@ const CONFIG = {
 };
 
 const STORAGE_KEYS = {
-  PROFILE: "turnout_profile_v2",
-  REPORTS: "turnout_reports_v2",
-  DRAFT: "turnout_draft_v2"
+  PROFILE: "turnout_profile_v201",
+  REPORTS: "turnout_reports_v201",
+  DRAFT: "turnout_draft_v201"
 };
 
 const MEMBER_FILES = {
@@ -76,6 +76,7 @@ async function init() {
   loadProfile();
   loadSavedReports();
   restoreDraftIfPresent();
+  normaliseResponderState();
   ensureRows();
 
   bindStaticEvents();
@@ -159,11 +160,33 @@ function createResponder(group) {
     name: "",
     phone: "",
     destination: "",
-    truckRole: "",
+    isDriver: false,
+    isCrewLeader: false,
     ba: false,
     injured: false,
     oic: false
   };
+}
+
+function normaliseResponderState() {
+  ["connewarre", "mtd"].forEach((groupKey) => {
+    state.responders[groupKey] = (state.responders[groupKey] || []).map((person) => {
+      const next = { ...createResponder(groupKey), ...person };
+
+      if (typeof person.truckRole === "string") {
+        if (person.truckRole === "Driver") next.isDriver = true;
+        if (person.truckRole === "CL") next.isCrewLeader = true;
+      }
+
+      if (person.truckRole === "Driver/CL") {
+        next.isDriver = true;
+        next.isCrewLeader = true;
+      }
+
+      delete next.truckRole;
+      return next;
+    });
+  });
 }
 
 function ensureRows() {
@@ -191,10 +214,14 @@ function bindStaticEvents() {
   el("openSettingsBtn")?.addEventListener("click", openSettings);
   el("closeSettingsBtn")?.addEventListener("click", closeSettings);
   el("saveProfileBtn")?.addEventListener("click", saveProfileFromUi);
+  el("editOicBtn")?.addEventListener("click", () => {
+    showPage("respondersPage");
+    updateDraftMeta("Review and update OIC in the responders section if needed.");
+  });
 
   el("pagerUpload")?.addEventListener("change", handleImageUpload);
   el("scanBtn")?.addEventListener("click", () => {
-    el("scanStatus").textContent = "OCR is intentionally disabled in this hardened base build. Nail reliability first, then add OCR.";
+    el("scanStatus").textContent = "OCR is intentionally disabled in this hardened build. Reliability first.";
   });
 
   el("addSceneBrigadeBtn")?.addEventListener("click", addSceneBrigade);
@@ -214,7 +241,7 @@ function bindStaticEvents() {
     scheduleDraftSave();
   });
 
-  el("addAgencyBtn")?.addEventListener("click", addAgency);
+  el("agencyType")?.addEventListener("change", autoAddAgencyFromSelect);
 
   el("flagMembersBeforeBtn")?.addEventListener("click", () => toggleFlag("membersBefore", "flagMembersBeforeBtn"));
   el("flagAarBtn")?.addEventListener("click", () => toggleFlag("aar", "flagAarBtn"));
@@ -227,8 +254,8 @@ function bindStaticEvents() {
     updateReportSummary();
   });
 
-  el("finishBtn")?.addEventListener("click", finishReport);
-  el("saveLocalBtn")?.addEventListener("click", saveCurrentReport);
+  el("finishBtn")?.addEventListener("click", generateReportFlow);
+  el("saveLocalBtn")?.addEventListener("click", () => saveCurrentReport({ dedupe: false, silent: false }));
   el("sendEmailBtn")?.addEventListener("click", sendEmail);
   el("sendSmsBtn")?.addEventListener("click", sendSms);
 
@@ -287,10 +314,10 @@ function updateConnectionBanner() {
 
   if (navigator.onLine) {
     banner.className = "status-banner online";
-    banner.textContent = "Online. Drafts save locally on this device.";
+    banner.textContent = "Online";
   } else {
     banner.className = "status-banner offline";
-    banner.textContent = "Offline mode. Keep working. Drafts and saved reports stay on this device.";
+    banner.textContent = "Offline";
   }
 }
 
@@ -395,8 +422,9 @@ function renderSceneBrigades() {
   });
 }
 
-function addAgency() {
-  const type = el("agencyType").value;
+function autoAddAgencyFromSelect() {
+  const select = el("agencyType");
+  const type = select.value;
   if (!type) return;
 
   state.agencies.push({
@@ -410,7 +438,7 @@ function addAgency() {
     comments: ""
   });
 
-  el("agencyType").value = "";
+  select.value = "";
   renderAgencies();
   scheduleDraftSave();
   updateReportSummary();
@@ -497,6 +525,14 @@ function updateResponderCardDisplay(card, person, groupKey) {
   if (badge) {
     badge.textContent = person.brigade || (groupKey === "connewarre" ? "CONN" : "");
   }
+
+  card.querySelectorAll(".responder-destinations .chip-btn").forEach((btn) => {
+    btn.disabled = !person.name.trim();
+  });
+
+  card.querySelectorAll(".responder-flags .chip-btn").forEach((btn) => {
+    btn.disabled = !person.name.trim();
+  });
 }
 
 function updateOicBanner() {
@@ -541,7 +577,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       return `<option value="${text(name)}"></option>`;
     }).join("");
 
-    const showTruckRole = person.destination === "T1" || person.destination === "T2";
+    const showTruckRole = person.destination === "T1" || person.destination === "T2" || person.destination === "MTD P/T";
 
     card.innerHTML = `
       <div class="responder-card-top">
@@ -565,12 +601,10 @@ function renderResponderGroup(groupKey, containerId, destinations) {
         </div>
       ` : ""}
 
-      ${person.name.trim() ? `
-        <div class="responder-stage">
-          <div class="stage-label">Flags</div>
-          <div class="chips responder-flags"></div>
-        </div>
-      ` : ""}
+      <div class="responder-stage">
+        <div class="stage-label">Flags</div>
+        <div class="chips responder-flags"></div>
+      </div>
     `;
 
     const nameInput = card.querySelector("input");
@@ -581,7 +615,6 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       updateOicBanner();
       updateReportSummary();
       scheduleDraftSave();
-      renderResponders();
     });
 
     card.querySelector(".tiny-btn").addEventListener("click", () => {
@@ -603,7 +636,10 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       btn.disabled = !person.name.trim();
       btn.addEventListener("click", () => {
         person.destination = dest;
-        if (dest !== "T1" && dest !== "T2") person.truckRole = "";
+        if (!(dest === "T1" || dest === "T2" || dest === "MTD P/T")) {
+          person.isDriver = false;
+          person.isCrewLeader = false;
+        }
         renderResponders();
         scheduleDraftSave();
       });
@@ -612,58 +648,83 @@ function renderResponderGroup(groupKey, containerId, destinations) {
 
     if (showTruckRole) {
       const roleWrap = card.querySelector(".responder-roles");
-      ["Driver", "CL"].forEach((role) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = `chip-btn ${person.truckRole === role ? "active" : ""}`;
-        btn.textContent = role;
-        btn.addEventListener("click", () => {
-          if (person.truckRole === role) {
-            person.truckRole = "";
-          } else if (!roleTaken(person.destination, role, person.id)) {
-            person.truckRole = role;
+
+      const driverBtn = document.createElement("button");
+      driverBtn.type = "button";
+      driverBtn.className = `chip-btn ${person.isDriver ? "active" : ""}`;
+      driverBtn.textContent = "Driver";
+      driverBtn.addEventListener("click", () => {
+        if (!person.isDriver && isRoleTaken(person.destination, "driver", person.id)) {
+          window.alert("A driver has already been appointed for that appliance.");
+          return;
+        }
+
+        person.isDriver = !person.isDriver;
+        renderResponders();
+        scheduleDraftSave();
+      });
+      roleWrap.appendChild(driverBtn);
+
+      const clBtn = document.createElement("button");
+      clBtn.type = "button";
+      clBtn.className = `chip-btn ${person.isCrewLeader ? "active" : ""}`;
+      clBtn.textContent = "CL";
+      clBtn.addEventListener("click", () => {
+        if (!person.isCrewLeader && isRoleTaken(person.destination, "crewLeader", person.id)) {
+          window.alert("A crew leader has already been appointed for that appliance.");
+          return;
+        }
+
+        person.isCrewLeader = !person.isCrewLeader;
+        renderResponders();
+        scheduleDraftSave();
+      });
+      roleWrap.appendChild(clBtn);
+    }
+
+    const flagsWrap = card.querySelector(".responder-flags");
+    [
+      ["BA", "ba"],
+      ["Injured", "injured"],
+      ["OIC", "oic"]
+    ].forEach(([label, key]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `chip-btn ${person[key] ? "active" : ""}`;
+      btn.textContent = label;
+      btn.disabled = !person.name.trim();
+
+      btn.addEventListener("click", () => {
+        if (!person.name.trim()) return;
+
+        if (key === "oic") {
+          const currentOic = getAllResponders().find((r) => r.oic && r.id !== person.id && r.name.trim());
+
+          if (!person.oic && currentOic) {
+            const confirmed = window.confirm(`OIC is currently ${currentOic.name}. Replace with ${person.name}?`);
+            if (!confirmed) return;
           }
+
+          const willBeOic = !person.oic;
+          clearAllOic();
+          person.oic = willBeOic;
           renderResponders();
           scheduleDraftSave();
-        });
-        roleWrap.appendChild(btn);
+          return;
+        }
+
+        person[key] = !person[key];
+        btn.classList.toggle("active", person[key]);
+        updateOicBanner();
+        updateReportSummary();
+        scheduleDraftSave();
       });
-    }
 
-    if (person.name.trim()) {
-      const flagsWrap = card.querySelector(".responder-flags");
-      [
-        ["BA", "ba"],
-        ["Injured", "injured"],
-        ["OIC", "oic"]
-      ].forEach(([label, key]) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = `chip-btn ${person[key] ? "active" : ""}`;
-        btn.textContent = label;
-
-        btn.addEventListener("click", () => {
-          if (key === "oic") {
-            const willBeOic = !person.oic;
-            clearAllOic();
-            person.oic = willBeOic;
-            renderResponders();
-            scheduleDraftSave();
-            return;
-          }
-
-          person[key] = !person[key];
-          btn.classList.toggle("active", person[key]);
-          updateOicBanner();
-          updateReportSummary();
-          scheduleDraftSave();
-        });
-
-        flagsWrap.appendChild(btn);
-      });
-    }
+      flagsWrap.appendChild(btn);
+    });
 
     wrap.appendChild(card);
+    updateResponderCardDisplay(card, person, groupKey);
 
     const list = state.responders[groupKey];
     const isLast = index === list.length - 1;
@@ -699,16 +760,27 @@ function findMemberAcrossBrigades(name) {
   return null;
 }
 
-function roleTaken(destination, role, currentId) {
-  return [...state.responders.connewarre, ...state.responders.mtd].some((r) => {
-    return r.id !== currentId && r.destination === destination && r.truckRole === role;
+function isRoleTaken(destination, roleKey, currentId) {
+  return getAllResponders().some((r) => {
+    if (r.id === currentId) return false;
+    if (r.destination !== destination) return false;
+    if (roleKey === "driver") return Boolean(r.isDriver);
+    if (roleKey === "crewLeader") return Boolean(r.isCrewLeader);
+    return false;
   });
 }
 
 function clearAllOic() {
-  [...state.responders.connewarre, ...state.responders.mtd].forEach((r) => {
+  getAllResponders().forEach((r) => {
     r.oic = false;
   });
+}
+
+function buildResponderRoleLabel(r) {
+  const roles = [];
+  if (r.isDriver) roles.push("Driver");
+  if (r.isCrewLeader) roles.push("CL");
+  return roles.length ? roles.join("/") : "Crew";
 }
 
 function buildReport() {
@@ -747,7 +819,7 @@ function buildReport() {
     if (crew.length) {
       applianceSections.push(title);
       crew.forEach((r) => {
-        applianceSections.push(`- ${r.name}${responderSuffix(r)} | ${r.truckRole || "Crew"}`);
+        applianceSections.push(`- ${r.name}${responderSuffix(r)} | ${buildResponderRoleLabel(r)}`);
       });
     }
   });
@@ -831,33 +903,26 @@ function pushLine(lines, label, value) {
   if (String(value || "").trim()) lines.push(`${label}: ${value}`);
 }
 
-function finishReport() {
+function getValidationIssues() {
+  const issues = [];
   const all = getAllResponders();
   const hasResponder = all.some((r) => r.name.trim());
   const hasOic = all.some((r) => r.oic && r.name.trim());
   const needsOic = state.incident.brigadeCode.trim().toUpperCase().startsWith("CONN");
 
-  if (!hasResponder) {
-    el("validationText").textContent = "At least one responder must be entered.";
-    el("finishActions").classList.add("hidden");
-    return;
-  }
+  if (!state.incident.eventNumber.trim()) issues.push("Event Number");
+  if (!state.incident.incidentType.trim()) issues.push("Incident Type");
+  if (!state.incident.address.trim()) issues.push("Address");
+  if (!hasResponder) issues.push("Responder");
+  if (needsOic && !hasOic) issues.push("OIC");
 
-  if (needsOic && !hasOic) {
-    el("validationText").textContent = "OIC must be selected for primary Connewarre jobs.";
-    el("finishActions").classList.add("hidden");
-    return;
-  }
+  return issues;
+}
 
-  if (isQuietHours()) {
-    el("validationText").textContent = "Report ready. It’s a bit late to send paperwork. Consider saving and sending during normal hours unless urgent.";
-  } else {
-    el("validationText").textContent = "Report ready.";
-  }
-
-  el("reportPreview").value = buildReport();
-  el("finishActions").classList.remove("hidden");
-  updateReportSummary();
+function renderValidationIssues(issues) {
+  const wrap = el("validationChips");
+  if (!wrap) return;
+  wrap.innerHTML = issues.map((item) => `<div class="validation-chip">${text(item)} missing</div>`).join("");
 }
 
 function isQuietHours() {
@@ -865,9 +930,45 @@ function isQuietHours() {
   return hour >= CONFIG.QUIET_HOURS_START || hour < CONFIG.QUIET_HOURS_END;
 }
 
-function saveCurrentReport() {
+function generateReportFlow() {
+  const issues = getValidationIssues();
+  renderValidationIssues(issues);
+
+  if (issues.length) {
+    el("validationText").textContent = "Complete the missing fields below before generating the report.";
+    el("finishActions").classList.add("hidden");
+    return;
+  }
+
+  if (isQuietHours()) {
+    el("validationText").textContent = "Report generated. It’s a bit late to send paperwork. Consider saving and sending during normal hours unless urgent.";
+  } else {
+    el("validationText").textContent = "Report generated.";
+  }
+
+  const report = buildReport();
+  el("reportPreview").value = report;
+  saveCurrentReport({ dedupe: true, silent: true });
+  el("finishActions").classList.remove("hidden");
+  updateReportSummary();
+}
+
+function buildReportTitle() {
+  return `${state.incident.eventNumber || "NO_EVENT"} – ${state.incident.incidentType || "UNKNOWN"} – ${state.incident.address || "NO ADDRESS"}`;
+}
+
+function saveCurrentReport(options = {}) {
+  const { dedupe = false, silent = false } = options;
   const title = buildReportTitle();
   const body = buildReport();
+
+  if (dedupe) {
+    const existing = state.savedReports.find((r) => r.title === title && r.body === body);
+    if (existing) {
+      if (!silent) updateDraftMeta("Matching report already saved locally.");
+      return;
+    }
+  }
 
   state.savedReports.unshift({
     id: uid(),
@@ -879,7 +980,10 @@ function saveCurrentReport() {
   state.savedReports = state.savedReports.slice(0, CONFIG.MAX_REPORTS);
   saveSavedReports();
   renderSavedReports();
-  updateDraftMeta("Report saved locally.");
+
+  if (!silent) {
+    updateDraftMeta("Report saved locally.");
+  }
 }
 
 function renderSavedReports() {
@@ -910,6 +1014,7 @@ function renderSavedReports() {
     loadBtn.addEventListener("click", () => {
       el("reportPreview").value = r.body;
       showPage("sendPage");
+      el("validationText").textContent = "Saved report loaded for review.";
     });
 
     delBtn.addEventListener("click", () => {
@@ -970,6 +1075,7 @@ function showPage(pageId) {
 
   if (pageId === "sendPage") {
     el("reportPreview").value = buildReport();
+    renderValidationIssues(getValidationIssues());
     updateReportSummary();
   }
 
@@ -1014,6 +1120,7 @@ function renderEverything() {
   renderSavedReports();
   updateConnectionBanner();
   updateReportSummary();
+  renderValidationIssues(getValidationIssues());
   showPage(state.ui.currentPage);
   renderDraftRestoreBanner();
 }
@@ -1044,10 +1151,6 @@ function updateReportSummary() {
   wrap.innerHTML = items
     .map(([label, value]) => `<div class="summary-item">${text(label)}: ${text(value)}</div>`)
     .join("");
-}
-
-function buildReportTitle() {
-  return `${state.incident.eventNumber || "NO_EVENT"} – ${state.incident.incidentType || "UNKNOWN"} – ${state.incident.address || "NO ADDRESS"}`;
 }
 
 function getDraftPayload() {
