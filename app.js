@@ -583,6 +583,15 @@ function collectStructureData() {
   persistDraft();
 }
 
+function collectHoseUse() {
+  state.hoseUse["64"] = el("hose64")?.value || "";
+  state.hoseUse["38"] = el("hose38")?.value || "";
+  state.hoseUse["25"] = el("hose25")?.value || "";
+  state.hoseUse["Live Reel"] = el("hoseLiveReel")?.value || "";
+
+  persistDraft();
+   
+}
 function bindStructureEvents() {
   document.querySelectorAll('input[name="structureRequired"]').forEach((radio) => {
     radio.addEventListener("change", () => {
