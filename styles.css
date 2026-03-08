@@ -2,100 +2,125 @@
   box-sizing: border-box;
 }
 
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #f0f1f4;
+  --text: #1a1d23;
+  --muted: #68707d;
+  --border: #d7dbe2;
+  --primary: #b00020;
+  --primary-dark: #8f0019;
+  --chip: #eef1f5;
+  --shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  --radius: 14px;
+}
+
 html,
 body {
   margin: 0;
   padding: 0;
   font-family: Arial, Helvetica, sans-serif;
-  background: #f4f5f7;
-  color: #111;
+  background: var(--bg);
+  color: var(--text);
 }
 
 body {
   min-height: 100vh;
 }
 
-.app-shell {
+.hidden {
+  display: none !important;
+}
+
+.app {
   width: 100%;
 }
 
 .app-header {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 12px 16px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 14px;
   align-items: center;
-  gap: 12px;
-  background: #b00020;
-  color: #fff;
-  padding: 12px 16px;
 }
 
 .app-header h1 {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: 1.8rem;
+  letter-spacing: 0.03em;
 }
 
-.subtitle {
+.app-header p {
   margin: 4px 0 0;
-  font-size: 0.9rem;
-  opacity: 0.9;
+  color: var(--muted);
+  font-size: 0.95rem;
 }
 
-.oic-status {
-  background: #fff;
-  color: #b00020;
-  border-radius: 999px;
+.oic-banner {
   padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
   font-weight: 700;
-  border: 2px solid #fff;
+  white-space: nowrap;
 }
 
-.oic-missing {
-  color: #b00020;
+.oic-banner.missing {
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
-.brigade-logo {
-  height: 64px;
+.logo {
+  height: 76px;
   width: auto;
   object-fit: contain;
 }
 
 .top-nav {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 16px 12px;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  background: #222;
-  padding: 10px 12px;
+  gap: 10px;
 }
 
-.nav-btn,
+.tab-btn,
 .primary-btn,
 .secondary-btn,
 .tiny-btn,
-.stack-toggle,
-.accordion-toggle,
-.mini-chip {
+.chip-btn {
   appearance: none;
-  border: 1px solid #ccc;
-  background: #fff;
-  color: #111;
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 0.95rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font: inherit;
   cursor: pointer;
 }
 
-.nav-btn.active,
+.tab-btn.active,
 .primary-btn,
-.mini-chip-active {
-  background: #b00020;
-  color: #fff;
-  border-color: #b00020;
+.chip-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
 }
 
-.main-content {
+.primary-btn:hover,
+.tab-btn.active:hover,
+.chip-btn.active:hover {
+  background: var(--primary-dark);
+}
+
+.main {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 0 16px 24px;
 }
 
 .page {
@@ -106,22 +131,34 @@ body {
   display: block;
 }
 
-.page-card,
+.card,
 .modal-card {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
 }
 
-.form-grid {
+.card h2,
+.modal-card h2 {
+  margin-top: 0;
+}
+
+.section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin: 16px 0;
+  gap: 14px;
+  margin-top: 14px;
 }
 
-.full-width {
+.full {
   grid-column: 1 / -1;
 }
 
@@ -136,110 +173,103 @@ input,
 textarea,
 select {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  font: inherit;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
   background: #fff;
-  color: #111;
+  color: var(--text);
+  font: inherit;
 }
 
 textarea {
   resize: vertical;
 }
 
-.inline-field,
-.upload-row,
-.page-actions,
-.page-actions.dual,
-.agency-toolbar,
-.scene-brigades-toolbar,
-.inline-radio,
-.vehicle-header-row,
-.finish-actions,
-.saved-report-actions,
-.chip-row {
+.inline {
   display: flex;
-  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.row {
+  display: flex;
   gap: 10px;
   align-items: center;
 }
 
-.page-actions {
-  justify-content: flex-end;
-  margin-top: 16px;
+.row.wrap {
+  flex-wrap: wrap;
 }
 
-.page-actions.dual {
+.row.between {
   justify-content: space-between;
 }
 
-.status-text {
-  margin: 8px 0 12px;
-  color: #555;
+.grow {
+  flex: 1;
 }
 
-.warning-box {
-  background: #fff7d6;
-  border: 1px solid #e5b700;
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-}
-
-.stacked-sections {
+.actions {
+  margin-top: 18px;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 10px;
 }
 
-.stack-item,
-.accordion-item,
-.saved-report-item,
-.vehicle-block,
-.agency-block {
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #fff;
+.actions.right {
+  justify-content: flex-end;
 }
 
-.stack-toggle,
-.accordion-toggle {
-  width: 100%;
-  text-align: left;
-  font-weight: 700;
-  background: #f0f0f0;
-  border: none;
-  border-bottom: 1px solid #ddd;
+.actions.split {
+  justify-content: space-between;
 }
 
-.stack-content,
-.accordion-panel {
-  display: none;
+.help-text {
+  color: var(--muted);
+  font-size: 0.92rem;
+  margin-top: 8px;
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.preview-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
   padding: 12px;
 }
 
-.stack-content.open,
-.accordion-panel.open {
-  display: block;
+.preview-img {
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: white;
+  margin-top: 8px;
 }
 
-.hidden {
-  display: none !important;
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .scene-chip,
-.responder-badge {
+.badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #f0f0f0;
-  border: 1px solid #ccc;
-  border-radius: 999px;
   padding: 6px 10px;
-  font-size: 0.85rem;
+  border-radius: 999px;
+  background: var(--chip);
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
   font-weight: 700;
 }
 
@@ -250,20 +280,17 @@ textarea {
   font-size: 1rem;
 }
 
-.responder-list-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.responder-row {
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  background: #fff;
+.agency-block,
+.responder-card,
+.saved-item {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
   padding: 12px;
+  margin-top: 10px;
 }
 
-.responder-row-top {
+.responder-card-top {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
@@ -271,52 +298,34 @@ textarea {
 }
 
 .responder-stage {
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .stage-label {
   font-size: 0.85rem;
-  color: #666;
+  color: var(--muted);
   font-weight: 700;
   margin-bottom: 6px;
 }
 
-.role-hint,
-.simple-note {
-  color: #666;
-  font-size: 0.9rem;
+.saved-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
 }
 
-.preview-image {
-  width: 100%;
-  max-height: 280px;
-  object-fit: contain;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  background: #fff;
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
 }
 
-.preview-empty {
-  color: #666;
-}
-
-.pager-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin: 12px 0 16px;
-}
-
-.preview-card {
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  background: #fff;
-  padding: 12px;
-}
-
-.preview-title {
-  font-weight: 700;
-  margin-bottom: 8px;
+.modal-card {
+  width: min(760px, 100%);
 }
 
 @media (max-width: 860px) {
@@ -324,14 +333,16 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .top-nav,
-  .form-grid,
-  .pager-preview-grid,
-  .responder-row-top {
+  .top-nav {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grid,
+  .responder-card-top {
     grid-template-columns: 1fr;
   }
 
-  .brigade-logo {
-    height: 56px;
+  .logo {
+    height: 62px;
   }
 }
