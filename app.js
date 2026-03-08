@@ -49,13 +49,10 @@ const CONFIG = {
   TRI_STATE: ["Yes", "No", "Unknown"],
   VEHICLE_STABILITY: ["Upright", "On side", "On roof", "Unknown"],
   RESPONSE_TYPES: ["Appliance", "Direct", "Station"],
-  TASKS: ["Crew Leader", "Driver", "Crew", "Other"],
-  SEAT_LAYOUTS: {
-    "Conn T1": ["Crew Leader", "Driver", "Crew 1", "Crew 2", "Crew 3"],
-    "Conn T2": ["Crew Leader", "Driver", "Crew 1", "Crew 2", "Crew 3"],
-    "Other": ["Crew Leader", "Driver", "Crew 1", "Crew 2", "Crew 3"],
-    "MTD P/T": ["Crew Leader", "Driver", "Crew 1", "Crew 2"]
-  }
+  APPLIANCE_OPTIONS: ["Conn T1", "Conn T2", "Other", "MTD P/T"],
+  APPLIANCE_OPTIONS_CONNEWARRE: ["Conn T1", "Conn T2", "Other"],
+  APPLIANCE_OPTIONS_MTD: ["MTD P/T"],
+  ROLE_OPTIONS: ["Driver", "CL", "Crew"],
 };
 
 const STORAGE_KEYS = {
@@ -90,12 +87,8 @@ const state = {
     pagerRawText: ""
   },
   responders: {
-    appliances: {
-      "Conn T1": [],
-      "Conn T2": [],
-      "Other": [],
-      "MTD P/T": []
-    },
+    connewarre: [],
+    mtd: [],
     direct: [],
     station: []
   },
@@ -163,7 +156,8 @@ async function init() {
   loadSavedReports();
   restoreDraftState();
   bindEventListeners();
-  initialiseResponderLayouts();
+  ensureMinimumResponderRows();
+  renderResponders();
   renderVehicleBlocks();
   renderAgencyBlocks();
   renderSavedReports();
@@ -220,10 +214,6 @@ function bindEventListeners() {
   bindVehicleListeners();
   bindAgencyListeners();
   bindSendListeners();
-
-  document.querySelectorAll(".add-responder-btn").forEach((btn) => {
-    btn.addEventListener("click", () => addSimpleResponder(btn.dataset.list));
-  });
 }
 
 function bindIncidentListeners() {
@@ -389,10 +379,7 @@ function findPagerRectangles(imageBitmap) {
     let darkPixels = 0;
     for (let x = 0; x < width; x++) {
       const index = (y * width + x) * 4;
-      const r = data[index];
-      const g = data[index + 1];
-      const b = data[index + 2];
-      const avg = (r + g + b) / 3;
+      const avg = (data[index] + data[index + 1] + data[index + 2]) / 3;
       if (avg < 180) darkPixels++;
     }
     rowScores.push(darkPixels / width);
@@ -520,10 +507,6 @@ function populateIncidentFields(parsed) {
   evaluateMvaAutoTrigger(parsed.upper || "");
 }
 
-function setOcrStatus(message) {
-  document.getElementById("ocrStatus").textContent = message;
-}
-
 /* =========================================================
    5. INCIDENT MODULE
    ========================================================= */
@@ -579,6 +562,10 @@ function collectHoseUse() {
   state.hoseUse["25"] = Number(document.getElementById("hose25").value || 0);
   state.hoseUse["Live Reel"] = Number(document.getElementById("hoseLiveReel").value || 0);
   persistDraftState();
+}
+
+function setOcrStatus(message) {
+  document.getElementById("ocrStatus").textContent = message;
 }
 
 /* =========================================================
@@ -796,129 +783,250 @@ function formatStructureReport() {
 /* =========================================================
    8. RESPONDER MODULE
    ========================================================= */
-function initialiseResponderLayouts() {
-  renderSeatLayout("Conn T1", "connT1SeatContainer", "CONN");
-  renderSeatLayout("Conn T2", "connT2SeatContainer", "CONN");
-  renderSeatLayout("Other", "connOtherSeatContainer", "CONN");
-  renderSeatLayout("MTD P/T", "mtdPtSeatContainer", "MTD");
-  renderSimpleResponders();
-}
-
-function renderSeatLayout(applianceName, containerId, mode) {
-  const container = document.getElementById(containerId);
-  const seats = CONFIG.SEAT_LAYOUTS[applianceName];
-  const existing = state.responders.appliances[applianceName];
-
-  while (existing.length < seats.length) {
-    existing.push(createBlankResponder(applianceName, seats[existing.length], "Appliance"));
+function ensureMinimumResponderRows() {
+  if (!Array.isArray(state.responders.connewarre) || !state.responders.connewarre.length) {
+    state.responders.connewarre = [createResponder("connewarre")];
   }
-
-  container.innerHTML = "";
-
-  existing.forEach((responder, index) => {
-    responder.task = seats[index];
-    const card = document.createElement("div");
-    card.className = "responder-card";
-    card.innerHTML = buildResponderCardHtml(responder, mode, true);
-    container.appendChild(card);
-  });
-
-  bindResponderCardInputs(container);
+  if (!Array.isArray(state.responders.mtd) || !state.responders.mtd.length) {
+    state.responders.mtd = [createResponder("mtd")];
+  }
+  if (!Array.isArray(state.responders.direct)) state.responders.direct = [];
+  if (!Array.isArray(state.responders.station)) state.responders.station = [];
 }
 
-function buildResponderCardHtml(responder, mode = "CONN", seatLocked = false) {
-  const brigadeOptions = mode === "MTD"
-    ? `<option value="">Select Brigade</option>
-       <option value="CONN" ${responder.brigade === "CONN" ? "selected" : ""}>Connewarre</option>
-       <option value="GROV" ${responder.brigade === "GROV" ? "selected" : ""}>Grovedale</option>
-       <option value="FRES" ${responder.brigade === "FRES" ? "selected" : ""}>Freshwater Creek</option>`
-    : `<option value="CONN" selected>Connewarre</option>`;
+function createResponder(group) {
+  const defaults = {
+    connewarre: {
+      brigade: "CONN",
+      appliance: "Conn T1",
+      responseType: "Appliance"
+    },
+    mtd: {
+      brigade: "",
+      appliance: "MTD P/T",
+      responseType: "Appliance"
+    },
+    direct: {
+      brigade: "",
+      appliance: "",
+      responseType: "Direct"
+    },
+    station: {
+      brigade: "",
+      appliance: "",
+      responseType: "Station"
+    }
+  };
 
-  const nameOptions = getMemberOptionsHtml(responder.brigade || (mode === "MTD" ? "" : "CONN"), responder.name);
+  const base = defaults[group] || defaults.direct;
 
-  return `
-    <div class="responder-card-top">
-      <div class="responder-title">${escapeHtml(responder.appliance)} - ${escapeHtml(responder.task)}</div>
-      <button class="tiny-btn remove-responder-btn ${seatLocked ? "hidden" : ""}" type="button" data-responder-id="${responder.id}">Remove</button>
-    </div>
-
-    <div class="responder-grid">
-      <label>
-        Brigade
-        <select data-responder-id="${responder.id}" data-field="brigade" class="responder-brigade">
-          ${brigadeOptions}
-        </select>
-      </label>
-
-      <label>
-        Name
-        <input type="text" list="memberList-${responder.id}" data-responder-id="${responder.id}" data-field="name" value="${escapeHtml(responder.name)}" />
-        <datalist id="memberList-${responder.id}">
-          ${nameOptions}
-        </datalist>
-      </label>
-
-      <label>
-        Contact Number
-        <input type="text" data-responder-id="${responder.id}" data-field="phone" value="${escapeHtml(responder.phone)}" />
-      </label>
-
-      <label>
-        Task
-        <select data-responder-id="${responder.id}" data-field="task" ${seatLocked ? "disabled" : ""}>
-          ${CONFIG.TASKS.map((task) => `<option value="${task}" ${responder.task === task ? "selected" : ""}>${task}</option>`).join("")}
-        </select>
-      </label>
-
-      <label>
-        Response Type
-        <select data-responder-id="${responder.id}" data-field="responseType">
-          ${CONFIG.RESPONSE_TYPES.map((rt) => `<option value="${rt}" ${responder.responseType === rt ? "selected" : ""}>${rt}</option>`).join("")}
-        </select>
-      </label>
-
-      <label>
-        Notes
-        <input type="text" data-responder-id="${responder.id}" data-field="notes" value="${escapeHtml(responder.notes)}" />
-      </label>
-    </div>
-
-    <div class="responder-flags">
-      <label><input type="checkbox" data-responder-id="${responder.id}" data-flag="ba" ${responder.ba ? "checked" : ""} /> BA</label>
-      <label><input type="checkbox" data-responder-id="${responder.id}" data-flag="injury" ${responder.injury ? "checked" : ""} /> Injury</label>
-      <label><input type="checkbox" data-responder-id="${responder.id}" data-flag="oic" ${responder.oic ? "checked" : ""} /> OIC</label>
-    </div>
-  `;
-}
-
-function createBlankResponder(appliance = "", task = "", responseType = "Appliance") {
   return {
     id: cryptoRandomId(),
-    brigade: appliance === "MTD P/T" ? "" : "CONN",
+    group,
+    brigade: base.brigade,
     name: "",
     phone: "",
-    appliance,
-    task,
+    appliance: base.appliance,
+    role: "",
     ba: false,
     injury: false,
     oic: false,
-    responseType,
+    responseType: base.responseType,
     notes: ""
   };
 }
 
-function bindResponderCardInputs(container) {
-  container.querySelectorAll("[data-responder-id]").forEach((el) => {
-    if (el.matches("[data-field]")) {
-      el.addEventListener("input", handleResponderFieldChange);
-      el.addEventListener("change", handleResponderFieldChange);
-    }
-    if (el.matches("[data-flag]")) {
-      el.addEventListener("change", handleResponderFlagChange);
-    }
-    if (el.classList.contains("remove-responder-btn")) {
-      el.addEventListener("click", removeResponderById);
-    }
+function renderResponders() {
+  renderConnewarreResponders();
+  renderMtdResponders();
+  renderOtherResponders();
+  updateHeaderOicStatus();
+}
+
+function renderConnewarreResponders() {
+  const container = document.getElementById("connewarreResponders");
+  container.innerHTML = `
+    <div class="responder-list-wrap">
+      <div id="connewarreList"></div>
+      <button id="addConnewarreResponderBtn" class="secondary-btn compact-add-btn" type="button">Add Member</button>
+    </div>
+  `;
+
+  const list = container.querySelector("#connewarreList");
+  state.responders.connewarre.forEach((responder, index) => {
+    list.appendChild(buildResponderRowElement(responder, index, "connewarre"));
+  });
+
+  container.querySelector("#addConnewarreResponderBtn").addEventListener("click", () => {
+    state.responders.connewarre.push(createResponder("connewarre"));
+    renderResponders();
+    persistDraftState();
+  });
+
+  bindResponderRowEvents(container);
+}
+
+function renderMtdResponders() {
+  const container = document.getElementById("mtdResponders");
+  container.innerHTML = `
+    <div class="responder-list-wrap">
+      <div id="mtdList"></div>
+      <button id="addMtdResponderBtn" class="secondary-btn compact-add-btn" type="button">Add Member</button>
+    </div>
+  `;
+
+  const list = container.querySelector("#mtdList");
+  state.responders.mtd.forEach((responder, index) => {
+    list.appendChild(buildResponderRowElement(responder, index, "mtd"));
+  });
+
+  container.querySelector("#addMtdResponderBtn").addEventListener("click", () => {
+    state.responders.mtd.push(createResponder("mtd"));
+    renderResponders();
+    persistDraftState();
+  });
+
+  bindResponderRowEvents(container);
+}
+
+function renderOtherResponders() {
+  renderSimpleResponderGroup("directRespondersContainer", "direct", "Add Direct Responder");
+  renderSimpleResponderGroup("stationRespondersContainer", "station", "Add Station Responder");
+}
+
+function renderSimpleResponderGroup(containerId, group, buttonLabel) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = `
+    <div class="responder-list-wrap">
+      <div id="${group}List"></div>
+      <button class="secondary-btn compact-add-btn" type="button" data-add-simple="${group}">${buttonLabel}</button>
+    </div>
+  `;
+
+  const list = container.querySelector(`#${group}List`);
+  state.responders[group].forEach((responder, index) => {
+    list.appendChild(buildResponderRowElement(responder, index, group));
+  });
+
+  container.querySelector(`[data-add-simple="${group}"]`).addEventListener("click", () => {
+    state.responders[group].push(createResponder(group));
+    renderResponders();
+    persistDraftState();
+  });
+
+  bindResponderRowEvents(container);
+}
+
+function buildResponderRowElement(responder, index, group) {
+  const row = document.createElement("div");
+  row.className = "responder-row";
+  row.dataset.group = group;
+  row.dataset.responderId = responder.id;
+
+  const isMtd = group === "mtd";
+  const isOtherGroup = group === "direct" || group === "station";
+  const brigadeOptions = `
+    <option value="">Brigade</option>
+    <option value="CONN" ${responder.brigade === "CONN" ? "selected" : ""}>Connewarre</option>
+    <option value="GROV" ${responder.brigade === "GROV" ? "selected" : ""}>Grovedale</option>
+    <option value="FRES" ${responder.brigade === "FRES" ? "selected" : ""}>Freshwater Creek</option>
+  `;
+
+  const applianceOptions = isMtd
+    ? CONFIG.APPLIANCE_OPTIONS_MTD
+    : isOtherGroup
+    ? ["", ...CONFIG.APPLIANCE_OPTIONS]
+    : CONFIG.APPLIANCE_OPTIONS_CONNEWARRE;
+
+  const nameListId = `memberList-${responder.id}`;
+
+  row.innerHTML = `
+    <div class="responder-row-main">
+      ${isMtd || isOtherGroup ? `
+        <div class="responder-row-field brigade-field">
+          <select data-responder-id="${responder.id}" data-field="brigade">
+            ${brigadeOptions}
+          </select>
+        </div>
+      ` : ""}
+
+      <div class="responder-row-field name-field">
+        <input
+          type="text"
+          list="${nameListId}"
+          placeholder="Name"
+          data-responder-id="${responder.id}"
+          data-field="name"
+          value="${escapeHtml(responder.name)}"
+        />
+        <datalist id="${nameListId}">
+          ${getMemberOptionsHtml(responder.brigade || "CONN", responder.name)}
+        </datalist>
+      </div>
+
+      <div class="responder-row-field appliance-field">
+        <select data-responder-id="${responder.id}" data-field="appliance">
+          ${applianceOptions.map((option) => {
+            const label = option || "Appliance";
+            return `<option value="${option}" ${responder.appliance === option ? "selected" : ""}>${label}</option>`;
+          }).join("")}
+        </select>
+      </div>
+
+      <div class="responder-row-field role-field">
+        <select data-responder-id="${responder.id}" data-field="role">
+          <option value="">Role</option>
+          ${CONFIG.ROLE_OPTIONS.map((role) => `<option value="${role}" ${responder.role === role ? "selected" : ""}>${role}</option>`).join("")}
+        </select>
+      </div>
+
+      <div class="responder-flags-compact">
+        <label class="tick-chip">
+          <input type="checkbox" data-responder-id="${responder.id}" data-flag="ba" ${responder.ba ? "checked" : ""} />
+          <span>BA</span>
+        </label>
+
+        <label class="tick-chip">
+          <input type="checkbox" data-responder-id="${responder.id}" data-flag="injury" ${responder.injury ? "checked" : ""} />
+          <span>Inj</span>
+        </label>
+
+        <label class="tick-chip ${responder.oic ? "tick-chip-active" : ""}">
+          <input type="checkbox" data-responder-id="${responder.id}" data-flag="oic" ${responder.oic ? "checked" : ""} />
+          <span>OIC</span>
+        </label>
+      </div>
+
+      ${index > 0 || isOtherGroup ? `
+        <button class="tiny-btn responder-remove-btn" type="button" data-remove-responder="${responder.id}" data-group="${group}">Remove</button>
+      ` : `
+        <div class="responder-remove-placeholder"></div>
+      `}
+    </div>
+
+    <input
+      type="hidden"
+      data-responder-id="${responder.id}"
+      data-field="phone"
+      value="${escapeHtml(responder.phone)}"
+    />
+  `;
+
+  return row;
+}
+
+function bindResponderRowEvents(container) {
+  container.querySelectorAll("[data-responder-id][data-field]").forEach((el) => {
+    el.addEventListener("input", handleResponderFieldChange);
+    el.addEventListener("change", handleResponderFieldChange);
+  });
+
+  container.querySelectorAll("[data-responder-id][data-flag]").forEach((el) => {
+    el.addEventListener("change", handleResponderFlagChange);
+  });
+
+  container.querySelectorAll("[data-remove-responder]").forEach((btn) => {
+    btn.addEventListener("click", handleRemoveResponder);
   });
 }
 
@@ -929,29 +1037,27 @@ function handleResponderFieldChange(e) {
   const field = e.target.dataset.field;
   responder[field] = e.target.value;
 
-  const card = e.target.closest(".responder-card");
+  const row = e.target.closest(".responder-row");
 
   if (field === "brigade") {
-    const list = card.querySelector("datalist");
-    if (list) {
-      list.innerHTML = getMemberOptionsHtml(responder.brigade, responder.name);
+    const datalist = row.querySelector("datalist");
+    if (datalist) {
+      datalist.innerHTML = getMemberOptionsHtml(responder.brigade, responder.name);
     }
 
     const matchedPhone = getMemberPhone(responder.brigade, responder.name);
-    if (matchedPhone) {
-      responder.phone = matchedPhone;
-      const phoneInput = card.querySelector('[data-field="phone"]');
-      if (phoneInput) phoneInput.value = matchedPhone;
-    }
+    responder.phone = matchedPhone || responder.phone || "";
+    syncHiddenPhoneField(row, responder.phone);
   }
 
   if (field === "name") {
-    const matchedPhone = getMemberPhone(responder.brigade, responder.name);
-    if (matchedPhone) {
-      responder.phone = matchedPhone;
-      const phoneInput = card.querySelector('[data-field="phone"]');
-      if (phoneInput) phoneInput.value = matchedPhone;
-    }
+    const matchedPhone = getMemberPhone(responder.brigade || defaultBrigadeForResponder(responder), responder.name);
+    responder.phone = matchedPhone || "";
+    syncHiddenPhoneField(row, responder.phone);
+  }
+
+  if (field === "appliance" && !responder.appliance && responder.group === "mtd") {
+    responder.appliance = "MTD P/T";
   }
 
   if (responder.oic) {
@@ -960,8 +1066,8 @@ function handleResponderFieldChange(e) {
     state.ui.oicPhone = responder.phone || "";
   }
 
-  persistDraftState();
   updateHeaderOicStatus();
+  persistDraftState();
 }
 
 function handleResponderFlagChange(e) {
@@ -969,23 +1075,21 @@ function handleResponderFlagChange(e) {
   if (!responder) return;
 
   const flag = e.target.dataset.flag;
+  const checked = e.target.checked;
 
-  if (flag === "oic" && e.target.checked) {
+  if (flag === "oic" && checked) {
     clearExistingOic();
   }
 
-  responder[flag] = e.target.checked;
+  responder[flag] = checked;
 
   if (flag === "oic") {
-    if (responder.oic) {
-      const matchedPhone = getMemberPhone(responder.brigade, responder.name);
-      if (matchedPhone && !responder.phone) {
-        responder.phone = matchedPhone;
-        const card = e.target.closest(".responder-card");
-        const phoneInput = card ? card.querySelector('[data-field="phone"]') : null;
-        if (phoneInput) phoneInput.value = matchedPhone;
+    if (checked) {
+      if (!responder.phone) {
+        responder.phone = getMemberPhone(responder.brigade || defaultBrigadeForResponder(responder), responder.name) || "";
+        const row = e.target.closest(".responder-row");
+        syncHiddenPhoneField(row, responder.phone);
       }
-
       state.ui.oicResponderId = responder.id;
       state.ui.oicName = responder.name || "";
       state.ui.oicPhone = responder.phone || "";
@@ -996,16 +1100,31 @@ function handleResponderFlagChange(e) {
     }
   }
 
-  updateHeaderOicStatus();
+  renderResponders();
   persistDraftState();
+}
+
+function handleRemoveResponder(e) {
+  const { removeResponder, group } = e.target.dataset;
+  state.responders[group] = state.responders[group].filter((r) => r.id !== removeResponder);
+
+  if ((group === "connewarre" || group === "mtd") && state.responders[group].length === 0) {
+    state.responders[group].push(createResponder(group));
+  }
+
+  renderResponders();
+  persistDraftState();
+}
+
+function syncHiddenPhoneField(row, phone) {
+  if (!row) return;
+  const hidden = row.querySelector('[data-field="phone"]');
+  if (hidden) hidden.value = phone || "";
 }
 
 function clearExistingOic() {
   getAllResponders().forEach((responder) => {
     responder.oic = false;
-  });
-  document.querySelectorAll('[data-flag="oic"]').forEach((box) => {
-    box.checked = false;
   });
 }
 
@@ -1020,12 +1139,7 @@ function updateHeaderOicStatus() {
   }
 
   if (!oic.phone) {
-    const matchedPhone = getMemberPhone(oic.brigade, oic.name);
-    if (matchedPhone) {
-      oic.phone = matchedPhone;
-      const phoneInput = document.querySelector(`[data-responder-id="${oic.id}"][data-field="phone"]`);
-      if (phoneInput) phoneInput.value = matchedPhone;
-    }
+    oic.phone = getMemberPhone(oic.brigade || defaultBrigadeForResponder(oic), oic.name) || "";
   }
 
   state.ui.oicResponderId = oic.id;
@@ -1035,12 +1149,15 @@ function updateHeaderOicStatus() {
   el.classList.remove("oic-missing");
 }
 
+function defaultBrigadeForResponder(responder) {
+  if (responder.group === "connewarre") return "CONN";
+  return responder.brigade || "";
+}
+
 function getAllResponders() {
   return [
-    ...state.responders.appliances["Conn T1"],
-    ...state.responders.appliances["Conn T2"],
-    ...state.responders.appliances["Other"],
-    ...state.responders.appliances["MTD P/T"],
+    ...state.responders.connewarre,
+    ...state.responders.mtd,
     ...state.responders.direct,
     ...state.responders.station
   ];
@@ -1048,100 +1165,6 @@ function getAllResponders() {
 
 function findResponderById(id) {
   return getAllResponders().find((r) => r.id === id);
-}
-
-function addSimpleResponder(listName) {
-  const responseType = listName === "direct" ? "Direct" : "Station";
-  state.responders[listName].push(createBlankResponder("", "Other", responseType));
-  renderSimpleResponders();
-  persistDraftState();
-}
-
-function renderSimpleResponders() {
-  renderSimpleResponderList("direct", "directRespondersContainer");
-  renderSimpleResponderList("station", "stationRespondersContainer");
-}
-
-function renderSimpleResponderList(listName, containerId) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = "";
-
-  state.responders[listName].forEach((responder) => {
-    const card = document.createElement("div");
-    card.className = "responder-card";
-    card.innerHTML = buildSimpleResponderHtml(responder);
-    container.appendChild(card);
-  });
-
-  bindResponderCardInputs(container);
-}
-
-function buildSimpleResponderHtml(responder) {
-  return `
-    <div class="responder-card-top">
-      <div class="responder-title">${escapeHtml(responder.responseType)} Responder</div>
-      <button class="tiny-btn remove-responder-btn" type="button" data-responder-id="${responder.id}">Remove</button>
-    </div>
-
-    <div class="responder-grid">
-      <label>
-        Brigade
-        <select data-responder-id="${responder.id}" data-field="brigade" class="responder-brigade">
-          <option value="">Select Brigade</option>
-          <option value="CONN" ${responder.brigade === "CONN" ? "selected" : ""}>Connewarre</option>
-          <option value="GROV" ${responder.brigade === "GROV" ? "selected" : ""}>Grovedale</option>
-          <option value="FRES" ${responder.brigade === "FRES" ? "selected" : ""}>Freshwater Creek</option>
-        </select>
-      </label>
-
-      <label>
-        Name
-        <input type="text" list="memberList-${responder.id}" data-responder-id="${responder.id}" data-field="name" value="${escapeHtml(responder.name)}" />
-        <datalist id="memberList-${responder.id}">
-          ${getMemberOptionsHtml(responder.brigade, responder.name)}
-        </datalist>
-      </label>
-
-      <label>
-        Contact Number
-        <input type="text" data-responder-id="${responder.id}" data-field="phone" value="${escapeHtml(responder.phone)}" />
-      </label>
-
-      <label>
-        Task
-        <select data-responder-id="${responder.id}" data-field="task">
-          ${CONFIG.TASKS.map((task) => `<option value="${task}" ${responder.task === task ? "selected" : ""}>${task}</option>`).join("")}
-        </select>
-      </label>
-
-      <label>
-        Response Type
-        <select data-responder-id="${responder.id}" data-field="responseType">
-          ${CONFIG.RESPONSE_TYPES.map((rt) => `<option value="${rt}" ${responder.responseType === rt ? "selected" : ""}>${rt}</option>`).join("")}
-        </select>
-      </label>
-
-      <label>
-        Notes
-        <input type="text" data-responder-id="${responder.id}" data-field="notes" value="${escapeHtml(responder.notes)}" />
-      </label>
-    </div>
-
-    <div class="responder-flags">
-      <label><input type="checkbox" data-responder-id="${responder.id}" data-flag="ba" ${responder.ba ? "checked" : ""} /> BA</label>
-      <label><input type="checkbox" data-responder-id="${responder.id}" data-flag="injury" ${responder.injury ? "checked" : ""} /> Injury</label>
-      <label><input type="checkbox" data-responder-id="${responder.id}" data-flag="oic" ${responder.oic ? "checked" : ""} /> OIC</label>
-    </div>
-  `;
-}
-
-function removeResponderById(e) {
-  const id = e.target.dataset.responderId;
-  state.responders.direct = state.responders.direct.filter((r) => r.id !== id);
-  state.responders.station = state.responders.station.filter((r) => r.id !== id);
-  renderSimpleResponders();
-  updateHeaderOicStatus();
-  persistDraftState();
 }
 
 function getMemberOptionsHtml(brigadeKey, currentValue = "") {
@@ -1440,25 +1463,37 @@ function buildOicSection() {
 }
 
 function buildApplianceSections() {
-  const lines = ["Appliances"];
-  let hasAny = false;
+  const grouped = {};
+  getAllResponders()
+    .filter((r) => r.name.trim() && r.appliance)
+    .forEach((responder) => {
+      if (!grouped[responder.appliance]) grouped[responder.appliance] = [];
+      grouped[responder.appliance].push(responder);
+    });
 
-  ["Conn T1", "Conn T2", "Other", "MTD P/T"].forEach((appliance) => {
-    const responders = state.responders.appliances[appliance].filter((r) => r.name.trim());
-    if (!responders.length) return;
-    hasAny = true;
-    lines.push(`${appliance}`);
-    responders.forEach((r) => {
-      lines.push(`- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)} | ${r.task}`);
+  const applianceNames = Object.keys(grouped);
+  if (!applianceNames.length) return "";
+
+  const lines = ["Appliances"];
+  applianceNames.forEach((appliance) => {
+    lines.push(appliance);
+    grouped[appliance].forEach((r) => {
+      const role = r.role ? ` | ${r.role}` : "";
+      lines.push(`- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}${role}`);
     });
   });
 
-  return hasAny ? lines.join("\n") : "";
+  return lines.join("\n");
 }
 
 function buildResponderSections() {
-  const directLines = state.responders.direct.filter((r) => r.name.trim()).map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}`);
-  const stationLines = state.responders.station.filter((r) => r.name.trim()).map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}`);
+  const directLines = state.responders.direct
+    .filter((r) => r.name.trim())
+    .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}${r.role ? " | " + r.role : ""}`);
+
+  const stationLines = state.responders.station
+    .filter((r) => r.name.trim())
+    .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}${r.role ? " | " + r.role : ""}`);
 
   const sections = [];
   if (directLines.length) sections.push(["Direct Responders", ...directLines].join("\n"));
@@ -1680,7 +1715,8 @@ function syncAllFieldsToUi() {
   document.getElementById("hose25").value = state.hoseUse["25"];
   document.getElementById("hoseLiveReel").value = state.hoseUse["Live Reel"];
 
-  initialiseResponderLayouts();
+  ensureMinimumResponderRows();
+  renderResponders();
 }
 
 function persistDraftState() {
@@ -1694,7 +1730,12 @@ function restoreDraftState() {
     const parsed = JSON.parse(raw);
 
     if (parsed.incident) state.incident = { ...state.incident, ...parsed.incident };
-    if (parsed.responders) state.responders = parsed.responders;
+    if (parsed.responders) {
+      state.responders = {
+        ...state.responders,
+        ...parsed.responders
+      };
+    }
     if (parsed.vehicles) state.vehicles = parsed.vehicles;
     if (parsed.agencies) state.agencies = parsed.agencies;
     if (parsed.structure) state.structure = { ...state.structure, ...parsed.structure };
