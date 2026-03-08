@@ -140,7 +140,61 @@ function ensureRows() {
   if (!state.responders.connewarre.length) state.responders.connewarre.push(createResponder("connewarre"));
   if (!state.responders.mtd.length) state.responders.mtd.push(createResponder("mtd"));
 }
+function getAllResponders() {
+  return [...state.responders.connewarre, ...state.responders.mtd];
+}
 
+function getResponder(groupKey, responderId) {
+  return state.responders[groupKey].find((r) => r.id === responderId) || null;
+}
+
+function resolveResponderMemberDetails(groupKey, person) {
+  const enteredName = String(person.name || "").trim().toUpperCase();
+
+  if (!enteredName) {
+    if (groupKey === "connewarre") {
+      person.brigade = "CONN";
+    } else {
+      person.brigade = "";
+    }
+    person.phone = "";
+    return;
+  }
+
+  if (groupKey === "connewarre") {
+    person.brigade = "CONN";
+    const found = state.memberLists.CONN.find((m) => {
+      const name = (typeof m === "string" ? m : m.name || "").trim().toUpperCase();
+      return name === enteredName;
+    });
+    person.phone = found && typeof found !== "string" ? found.phone || "" : "";
+    return;
+  }
+
+  const found = findMemberAcrossBrigades(person.name);
+  person.brigade = found?.brigade || "";
+  person.phone = found?.phone || "";
+}
+
+function updateResponderCardDisplay(card, person, groupKey) {
+  const badge = card.querySelector(".badge");
+  if (badge) {
+    badge.textContent = person.brigade || (groupKey === "connewarre" ? "CONN" : "");
+  }
+}
+
+function updateOicBanner() {
+  const oic = getAllResponders().find((r) => r.oic && r.name.trim());
+
+  if (!oic) {
+    el("oicBanner").textContent = "APPOINT OIC";
+    el("oicBanner").classList.add("missing");
+    return;
+  }
+
+  el("oicBanner").textContent = `OIC: ${oic.name}${oic.phone ? " – " + oic.phone : ""}`;
+  el("oicBanner").classList.remove("missing");
+}
 function bindStaticEvents() {
   document.querySelectorAll(".tab-btn[data-page]").forEach((btn) => {
     btn.addEventListener("click", () => showPage(btn.dataset.page));
@@ -505,20 +559,6 @@ function clearAllOic() {
   [...state.responders.connewarre, ...state.responders.mtd].forEach((r) => {
     r.oic = false;
   });
-}
-
-function updateOicBanner() {
-  const all = [...state.responders.connewarre, ...state.responders.mtd];
-  const oic = all.find((r) => r.oic && r.name.trim());
-
-  if (!oic) {
-    el("oicBanner").textContent = "APPOINT OIC";
-    el("oicBanner").classList.add("missing");
-    return;
-  }
-
-  el("oicBanner").textContent = `OIC: ${oic.name}${oic.phone ? " – " + oic.phone : ""}`;
-  el("oicBanner").classList.remove("missing");
 }
 
 function buildReport() {
