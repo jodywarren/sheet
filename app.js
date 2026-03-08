@@ -1,6 +1,7 @@
 /* =========================================================
    TURNOUT SHEET - CFA DIGITAL TURNOUT SHEET
    Vanilla JS Progressive Web App
+   Full replacement file
    ========================================================= */
 
 /* =========================================================
@@ -200,7 +201,7 @@ function bindEventListeners() {
   });
 
   document.querySelectorAll(".stack-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => toggleSection(btn.dataset.target, btn));
+    btn.addEventListener("click", () => toggleSection(btn.dataset.target));
   });
 
   document.querySelectorAll(".accordion-toggle").forEach((btn) => {
@@ -557,9 +558,7 @@ function evaluateMvaAutoTrigger(text) {
   const hasMatch = CONFIG.MVA_KEYWORDS.some((keyword) => text.includes(keyword));
   if (hasMatch) {
     const vehicleSection = document.getElementById("vehicleSection");
-    const toggle = document.querySelector('[data-target="vehicleSection"]');
     vehicleSection.classList.add("open");
-    if (toggle) toggle.classList.add("open");
     if (state.vehicles.length === 0) setVehicleCount(1);
   }
 }
@@ -811,7 +810,7 @@ function renderSeatLayout(applianceName, containerId, mode) {
   const existing = state.responders.appliances[applianceName];
 
   while (existing.length < seats.length) {
-    existing.push(createBlankResponder(applianceName, seats[existing.length], mode === "MTD" ? "Appliance" : "Appliance"));
+    existing.push(createBlankResponder(applianceName, seats[existing.length], "Appliance"));
   }
 
   container.innerHTML = "";
@@ -930,9 +929,35 @@ function handleResponderFieldChange(e) {
   const field = e.target.dataset.field;
   responder[field] = e.target.value;
 
+  const card = e.target.closest(".responder-card");
+
   if (field === "brigade") {
-    const list = e.target.closest(".responder-card").querySelector("datalist");
-    list.innerHTML = getMemberOptionsHtml(responder.brigade, responder.name);
+    const list = card.querySelector("datalist");
+    if (list) {
+      list.innerHTML = getMemberOptionsHtml(responder.brigade, responder.name);
+    }
+
+    const matchedPhone = getMemberPhone(responder.brigade, responder.name);
+    if (matchedPhone) {
+      responder.phone = matchedPhone;
+      const phoneInput = card.querySelector('[data-field="phone"]');
+      if (phoneInput) phoneInput.value = matchedPhone;
+    }
+  }
+
+  if (field === "name") {
+    const matchedPhone = getMemberPhone(responder.brigade, responder.name);
+    if (matchedPhone) {
+      responder.phone = matchedPhone;
+      const phoneInput = card.querySelector('[data-field="phone"]');
+      if (phoneInput) phoneInput.value = matchedPhone;
+    }
+  }
+
+  if (responder.oic) {
+    state.ui.oicResponderId = responder.id;
+    state.ui.oicName = responder.name || "";
+    state.ui.oicPhone = responder.phone || "";
   }
 
   persistDraftState();
@@ -952,15 +977,23 @@ function handleResponderFlagChange(e) {
   responder[flag] = e.target.checked;
 
   if (flag === "oic") {
-    state.ui.oicResponderId = responder.oic ? responder.id : "";
-    state.ui.oicName = responder.oic ? responder.name : "";
-    state.ui.oicPhone = responder.oic ? responder.phone : "";
-  }
+    if (responder.oic) {
+      const matchedPhone = getMemberPhone(responder.brigade, responder.name);
+      if (matchedPhone && !responder.phone) {
+        responder.phone = matchedPhone;
+        const card = e.target.closest(".responder-card");
+        const phoneInput = card ? card.querySelector('[data-field="phone"]') : null;
+        if (phoneInput) phoneInput.value = matchedPhone;
+      }
 
-  if (flag === "oic" && !e.target.checked) {
-    state.ui.oicResponderId = "";
-    state.ui.oicName = "";
-    state.ui.oicPhone = "";
+      state.ui.oicResponderId = responder.id;
+      state.ui.oicName = responder.name || "";
+      state.ui.oicPhone = responder.phone || "";
+    } else {
+      state.ui.oicResponderId = "";
+      state.ui.oicName = "";
+      state.ui.oicPhone = "";
+    }
   }
 
   updateHeaderOicStatus();
@@ -984,6 +1017,15 @@ function updateHeaderOicStatus() {
     el.textContent = "APPOINT OIC";
     el.classList.add("oic-missing");
     return;
+  }
+
+  if (!oic.phone) {
+    const matchedPhone = getMemberPhone(oic.brigade, oic.name);
+    if (matchedPhone) {
+      oic.phone = matchedPhone;
+      const phoneInput = document.querySelector(`[data-responder-id="${oic.id}"][data-field="phone"]`);
+      if (phoneInput) phoneInput.value = matchedPhone;
+    }
   }
 
   state.ui.oicResponderId = oic.id;
@@ -1543,14 +1585,6 @@ function saveReportLocally() {
   saveReportSummary();
 }
 
-function updateQuietHoursWarning() {
-  const warning = document.getElementById("quietHoursWarning");
-  const now = new Date();
-  const hour = now.getHours();
-  const quiet = hour >= CONFIG.QUIET_HOURS.start || hour < CONFIG.QUIET_HOURS.end;
-  warning.classList.toggle("hidden", !quiet);
-}
-
 /* =========================================================
    14. UI RENDER HELPERS
    ========================================================= */
@@ -1584,6 +1618,14 @@ function toggleSection(targetId) {
 function toggleAccordion(targetId) {
   const panel = document.getElementById(targetId);
   panel.classList.toggle("open");
+}
+
+function updateQuietHoursWarning() {
+  const warning = document.getElementById("quietHoursWarning");
+  const now = new Date();
+  const hour = now.getHours();
+  const quiet = hour >= CONFIG.QUIET_HOURS.start || hour < CONFIG.QUIET_HOURS.end;
+  warning.classList.toggle("hidden", !quiet);
 }
 
 function syncIncidentFieldsToUi() {
@@ -1697,6 +1739,25 @@ function appendBrigadeIfNeeded(responder) {
   return responder.brigade && responder.brigade !== "CONN"
     ? `${responder.name} (${brigadeName})`
     : responder.name;
+}
+
+function getMemberRecord(brigadeKey, memberName) {
+  if (!brigadeKey || !memberName) return null;
+
+  const members = state.memberLists[brigadeKey] || [];
+  const target = memberName.trim().toUpperCase();
+
+  return members.find((member) => {
+    const name = typeof member === "string" ? member : (member.name || "");
+    return name.trim().toUpperCase() === target;
+  }) || null;
+}
+
+function getMemberPhone(brigadeKey, memberName) {
+  const record = getMemberRecord(brigadeKey, memberName);
+  if (!record) return "";
+  if (typeof record === "string") return "";
+  return record.phone || "";
 }
 
 function lineIfValue(label, value) {
