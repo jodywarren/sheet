@@ -1427,6 +1427,53 @@ function renderAgencies() {
    VEHICLES
    ========================================================= */
 
+function renderVehicleBlocks() {
+  const container = el("vehicleBlocks");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  state.vehicles.forEach((vehicle, index) => {
+    const block = document.createElement("div");
+    block.className = "vehicle-block";
+    block.innerHTML = `
+      <h4>Vehicle ${index + 1}</h4>
+      <div class="form-grid">
+        <label>
+          Vehicle Make
+          <input type="text" value="${escapeHtml(vehicle.make || "")}" />
+        </label>
+
+        <label>
+          Vehicle Model
+          <input type="text" value="${escapeHtml(vehicle.model || "")}" />
+        </label>
+
+        <label>
+          Rego
+          <input type="text" value="${escapeHtml(vehicle.rego || "")}" />
+        </label>
+
+        <label>
+          State
+          <input type="text" value="${escapeHtml(vehicle.state || "")}" />
+        </label>
+
+        <label>
+          Driver / Contact Name
+          <input type="text" value="${escapeHtml(vehicle.contactName || "")}" />
+        </label>
+
+        <label>
+          Driver / Contact Number
+          <input type="text" value="${escapeHtml(vehicle.contactNumber || "")}" />
+        </label>
+      </div>
+    `;
+    container.appendChild(block);
+  });
+}
+
 function renderVehicles() {
   renderVehicleBlocks();
 }
