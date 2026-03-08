@@ -1,39 +1,30 @@
 /* =========================================================
    TURNOUT SHEET - CFA DIGITAL TURNOUT SHEET
-   Full replacement file
+   Stable full replacement app.js
    ========================================================= */
 
-/* =========================================================
-   1. CONFIGURATION BLOCK
-   ========================================================= */
 const CONFIG = {
-  APP_NAME: "Turnout Sheet",
   MAX_REPORTS: 10,
   MAX_VEHICLES: 5,
-  QUIET_HOURS: {
-    start: 22,
-    end: 7,
-  },
+  QUIET_HOURS: { start: 22, end: 7 },
   MEMBER_FILES: [
-    { key: "CONN", url: "CONN.members.json", label: "Connewarre" },
-    { key: "GROV", url: "GROV.members.json", label: "Grovedale" },
-    { key: "FRES", url: "FRES.members.json", label: "Freshwater Creek" },
+    { key: "CONN", url: "CONN.members.json" },
+    { key: "GROV", url: "GROV.members.json" },
+    { key: "FRES", url: "FRES.members.json" }
   ],
   BRIGADE_SCENE_OPTIONS: ["CONN", "GROV", "FRES", "P64", "P32", "P31", "P33", "P35", "P41"],
+  AGENCY_TYPES: ["Police", "Ambulance", "PowerCor", "Gas", "SES", "Local Government", "Other"],
+  INCIDENT_TYPES: ["ALAR", "STRU", "NONS", "INCI", "G&SC"],
+  CODE_LEVELS: ["C1", "C3"],
   VEHICLE_MAKES: [
     "Toyota", "Ford", "Holden", "Mazda", "Hyundai", "Kia", "Mitsubishi", "Nissan",
     "Subaru", "Volkswagen", "BMW", "Mercedes", "Audi", "Isuzu", "LDV", "Tesla",
     "BYD", "MG", "GWM", "Volvo", "Skoda", "Jeep", "Suzuki", "Lexus", "Ram", "Other"
   ],
   STATES: ["VIC", "NSW", "SA", "TAS", "ACT", "QLD", "WA", "NT"],
-  INCIDENT_TYPES: ["ALAR", "STRU", "NONS", "INCI", "G&SC"],
-  CODE_LEVELS: ["C1", "C3"],
-  FIRST_AGENCIES: ["CFA", "FRV", "Police", "Ambulance", "SES", "PowerCor", "Gas", "Other"],
-  AGENCY_TYPES: ["Police", "Ambulance", "PowerCor", "Gas", "SES", "Local Government", "Other"],
-  MVA_KEYWORDS: [
-    "INCI", "MVA", "MVC", "MVI", "VEHICLE", "COLLISION", "CRASH",
-    "ROLLOVER", "TRAPPED", "ROAD RESCUE", "CAR INTO", "TRUCK INTO", "VEHICLE INTO"
-  ],
+  OCCUPANTS: ["0", "1", "2", "3", "4+", "Unknown"],
+  TRI_STATE: ["Yes", "No", "Unknown"],
+  VEHICLE_STABILITY: ["Upright", "On side", "On roof", "Unknown"],
   VEHICLE_PROPULSION: [
     "ICE (Internal Combustion Engine – Petrol/Diesel)",
     "LPG",
@@ -45,23 +36,22 @@ const CONFIG = {
     "Unknown",
     "Other"
   ],
-  OCCUPANTS: ["0", "1", "2", "3", "4+", "Unknown"],
-  TRI_STATE: ["Yes", "No", "Unknown"],
-  VEHICLE_STABILITY: ["Upright", "On side", "On roof", "Unknown"],
+  FIRST_AGENCIES: ["CFA", "FRV", "Police", "Ambulance", "SES", "PowerCor", "Gas", "Other"],
   RESPONSE_DESTINATIONS_CONNEWARRE: ["T1", "T2", "Station", "Direct"],
   RESPONSE_DESTINATIONS_MTD: ["MTD P/T", "Station", "Direct"],
   TRUCK_ROLES: ["Driver", "CL"],
+  MVA_KEYWORDS: [
+    "INCI", "MVA", "MVC", "MVI", "VEHICLE", "COLLISION", "CRASH",
+    "ROLLOVER", "TRAPPED", "ROAD RESCUE", "CAR INTO", "TRUCK INTO", "VEHICLE INTO"
+  ]
 };
 
 const STORAGE_KEYS = {
   PROFILE: "turnout_profile",
   SAVED_REPORTS: "turnout_saved_reports",
-  DRAFT_STATE: "turnout_draft_state"
+  DRAFT: "turnout_draft_state"
 };
 
-/* =========================================================
-   2. APPLICATION STATE
-   ========================================================= */
 const state = {
   incident: {
     eventNumber: "",
@@ -88,8 +78,8 @@ const state = {
     connewarre: [],
     mtd: []
   },
-  vehicles: [],
   agencies: [],
+  vehicles: [],
   structure: {
     required: false,
     propertyType: "",
@@ -125,44 +115,180 @@ const state = {
     email: "",
     brigade: "Connewarre"
   },
-  savedReports: [],
   memberLists: {
     CONN: [],
     GROV: [],
     FRES: []
   },
+  savedReports: [],
   ui: {
     currentPage: "incidentPage",
-    oicResponderId: "",
-    oicName: "",
-    oicPhone: "",
     pagerImageFile: null,
+    pagerPreviewUrl: "",
+    pagerCropPreviewUrl: "",
     reportPreview: ""
   }
 };
 
-/* =========================================================
-   3. INITIALISATION
-   ========================================================= */
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
-  await loadMemberLists();
-  loadProfile();
-  loadSavedReports();
-  restoreDraftState();
-  ensureMinimumResponderRows();
-  bindEventListeners();
-  renderResponders();
-  renderVehicleBlocks();
-  renderAgencyBlocks();
-  renderSavedReports();
-  renderBrigadesOnScene();
-  syncAllFieldsToUi();
-  updateHeaderOicStatus();
-  showPage(state.ui.currentPage || "incidentPage");
-  registerServiceWorker();
+  try {
+    await loadMemberLists();
+    loadProfile();
+    loadSavedReports();
+    restoreDraft();
+
+    ensureMinimumResponderRows();
+    bindBaseEvents();
+    syncAllFieldsToUi();
+    renderResponders();
+    renderAgencies();
+    renderVehicles();
+    renderBrigadesOnScene();
+    renderSavedReports();
+    updateHeaderOicStatus();
+    showPage(state.ui.currentPage || "incidentPage");
+    registerServiceWorker();
+  } catch (error) {
+    console.error("Init failed", error);
+    setStatus("ocrStatus", "App failed to initialise. Refresh and try again.");
+  }
 }
+
+/* =========================================================
+   BASIC HELPERS
+   ========================================================= */
+
+function el(id) {
+  return document.getElementById(id);
+}
+
+function setStatus(id, text) {
+  const node = el(id);
+  if (node) node.textContent = text;
+}
+
+function normaliseSpacing(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function cryptoRandomId() {
+  return `id_${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function lineIfValue(label, value) {
+  if (value === null || value === undefined || String(value).trim() === "") return "";
+  return `${label}: ${value}`;
+}
+
+function formatDateForReport(value) {
+  if (!value) return "";
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
+}
+
+function formatBrigadeName(brigadeKey) {
+  if (brigadeKey === "CONN") return "Connewarre";
+  if (brigadeKey === "GROV") return "Grovedale";
+  if (brigadeKey === "FRES") return "Freshwater Creek";
+  return brigadeKey || "";
+}
+
+function appendBrigadeIfNeeded(responder) {
+  return responder.brigade && responder.brigade !== "CONN"
+    ? `${responder.name} (${formatBrigadeName(responder.brigade)})`
+    : responder.name;
+}
+
+function isPrimaryConnJob() {
+  return (state.incident.brigadeCode || "").toUpperCase().startsWith("CONN");
+}
+
+function getAllResponders() {
+  return [...state.responders.connewarre, ...state.responders.mtd];
+}
+
+function findResponderById(id) {
+  return getAllResponders().find((r) => r.id === id);
+}
+
+/* =========================================================
+   STORAGE
+   ========================================================= */
+
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
+    if (!raw) return;
+    state.profile = { ...state.profile, ...JSON.parse(raw) };
+  } catch (error) {
+    console.warn("Profile load failed", error);
+  }
+}
+
+function saveProfile() {
+  localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(state.profile));
+}
+
+function loadSavedReports() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.SAVED_REPORTS);
+    state.savedReports = raw ? JSON.parse(raw) : [];
+  } catch (error) {
+    state.savedReports = [];
+  }
+}
+
+function saveSavedReports() {
+  localStorage.setItem(STORAGE_KEYS.SAVED_REPORTS, JSON.stringify(state.savedReports));
+}
+
+function persistDraft() {
+  localStorage.setItem(STORAGE_KEYS.DRAFT, JSON.stringify(state));
+}
+
+function restoreDraft() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DRAFT);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+
+    if (parsed.incident) {
+      state.incident = { ...state.incident, ...parsed.incident };
+      if (!Array.isArray(state.incident.brigadesOnScene)) state.incident.brigadesOnScene = [];
+    }
+    if (parsed.responders) {
+      state.responders = { ...state.responders, ...parsed.responders };
+    }
+    if (parsed.agencies) state.agencies = parsed.agencies;
+    if (parsed.vehicles) state.vehicles = parsed.vehicles;
+    if (parsed.structure) state.structure = { ...state.structure, ...parsed.structure };
+    if (parsed.hoseUse) state.hoseUse = { ...state.hoseUse, ...parsed.hoseUse };
+    if (parsed.profile) state.profile = { ...state.profile, ...parsed.profile };
+    if (parsed.savedReports) state.savedReports = parsed.savedReports;
+    if (parsed.ui) {
+      state.ui.currentPage = parsed.ui.currentPage || "incidentPage";
+      state.ui.reportPreview = parsed.ui.reportPreview || "";
+    }
+  } catch (error) {
+    console.warn("Draft restore failed", error);
+  }
+}
+
+/* =========================================================
+   MEMBER LISTS
+   ========================================================= */
 
 async function loadMemberLists() {
   for (const file of CONFIG.MEMBER_FILES) {
@@ -178,7 +304,81 @@ async function loadMemberLists() {
   }
 }
 
-function bindEventListeners() {
+function getMemberRecord(brigadeKey, memberName) {
+  if (!brigadeKey || !memberName) return null;
+  const members = state.memberLists[brigadeKey] || [];
+  const target = memberName.trim().toUpperCase();
+
+  return members.find((member) => {
+    const name = typeof member === "string" ? member : (member.name || "");
+    return name.trim().toUpperCase() === target;
+  }) || null;
+}
+
+function getMemberPhone(brigadeKey, memberName) {
+  const record = getMemberRecord(brigadeKey, memberName);
+  if (!record || typeof record === "string") return "";
+  return record.phone || "";
+}
+
+function getMemberOptionsHtml(brigadeKey, currentValue = "") {
+  const options = (state.memberLists[brigadeKey] || []).map((member) => {
+    const name = typeof member === "string" ? member : (member.name || "");
+    return `<option value="${escapeHtml(name)}"></option>`;
+  });
+
+  if (currentValue && !options.some((opt) => opt.includes(`value="${escapeHtml(currentValue)}"`))) {
+    options.unshift(`<option value="${escapeHtml(currentValue)}"></option>`);
+  }
+
+  return options.join("");
+}
+
+function getCombinedMtdMemberOptionsHtml(currentValue = "") {
+  const names = [];
+  ["CONN", "GROV", "FRES"].forEach((key) => {
+    (state.memberLists[key] || []).forEach((member) => {
+      const name = typeof member === "string" ? member : (member.name || "");
+      if (name) names.push(name);
+    });
+  });
+
+  const unique = [...new Set(names)];
+  const html = unique.map((name) => `<option value="${escapeHtml(name)}"></option>`);
+
+  if (currentValue && !unique.includes(currentValue)) {
+    html.unshift(`<option value="${escapeHtml(currentValue)}"></option>`);
+  }
+
+  return html.join("");
+}
+
+function inferMtdMemberRecord(memberName) {
+  const target = String(memberName || "").trim().toUpperCase();
+  if (!target) return null;
+
+  for (const key of ["CONN", "GROV", "FRES"]) {
+    const found = (state.memberLists[key] || []).find((member) => {
+      const name = typeof member === "string" ? member : (member.name || "");
+      return name.trim().toUpperCase() === target;
+    });
+
+    if (found) {
+      return {
+        brigade: key,
+        phone: typeof found === "string" ? "" : (found.phone || "")
+      };
+    }
+  }
+
+  return null;
+}
+
+/* =========================================================
+   BASE EVENTS
+   ========================================================= */
+
+function bindBaseEvents() {
   document.querySelectorAll(".nav-btn[data-page]").forEach((btn) => {
     btn.addEventListener("click", () => showPage(btn.dataset.page));
   });
@@ -192,30 +392,36 @@ function bindEventListeners() {
   });
 
   document.querySelectorAll(".stack-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => toggleSection(btn.dataset.target));
+    btn.addEventListener("click", () => {
+      const target = el(btn.dataset.target);
+      if (target) target.classList.toggle("open");
+    });
   });
 
   document.querySelectorAll(".accordion-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => toggleAccordion(btn.dataset.target));
+    btn.addEventListener("click", () => {
+      const target = el(btn.dataset.target);
+      if (target) target.classList.toggle("open");
+    });
   });
 
-  document.getElementById("settingsBtn").addEventListener("click", openSettingsModal);
-  document.getElementById("closeSettingsBtn").addEventListener("click", closeSettingsModal);
-  document.getElementById("saveProfileBtn").addEventListener("click", saveProfileFromUi);
+  if (el("settingsBtn")) el("settingsBtn").addEventListener("click", openSettingsModal);
+  if (el("closeSettingsBtn")) el("closeSettingsBtn").addEventListener("click", closeSettingsModal);
+  if (el("saveProfileBtn")) el("saveProfileBtn").addEventListener("click", saveProfileFromUi);
 
-  document.getElementById("pagerUpload").addEventListener("change", handleImageUpload);
-  document.getElementById("runOcrBtn").addEventListener("click", runOcrPipeline);
+  if (el("pagerUpload")) el("pagerUpload").addEventListener("change", handleImageUpload);
+  if (el("runOcrBtn")) el("runOcrBtn").addEventListener("click", runOcrPipeline);
 
-  bindIncidentListeners();
-  bindStructureListeners();
-  bindVehicleListeners();
-  bindAgencyListeners();
-  bindSendListeners();
-  bindSceneBrigadesListeners();
+  bindIncidentFieldEvents();
+  bindSceneBrigadeEvents();
+  bindStructureEvents();
+  bindVehicleEvents();
+  bindAgencyEvents();
+  bindSendEvents();
 }
 
-function bindIncidentListeners() {
-  const bindings = [
+function bindIncidentFieldEvents() {
+  const textBindings = [
     ["eventNumber", "eventNumber"],
     ["pagerDate", "pagerDate"],
     ["pagerTime", "pagerTime"],
@@ -227,194 +433,244 @@ function bindIncidentListeners() {
     ["notes", "notes"]
   ];
 
-  bindings.forEach(([id, key]) => {
-    document.getElementById(id).addEventListener("input", (e) => {
+  textBindings.forEach(([id, key]) => {
+    const node = el(id);
+    if (!node) return;
+    node.addEventListener("input", (e) => {
       state.incident[key] = e.target.value;
       if (key === "brigadeCode") updateBrigadeRole();
       if (key === "incidentType") updateStructureVisibilityByIncidentType();
       if (key === "firsCode") updateFirsLabel();
-      persistDraftState();
+      persistDraft();
     });
   });
 
-  document.getElementById("resetFirsBtn").addEventListener("click", () => {
-    state.incident.firsCode = "";
-    document.getElementById("firsCode").value = "";
-    updateFirsLabel();
-    persistDraftState();
-  });
-
-  document.getElementById("firstAgencySelect").addEventListener("change", (e) => {
-    state.incident.firstAgency = e.target.value;
-    const other = document.getElementById("firstAgencyOther");
-    other.classList.toggle("hidden", e.target.value !== "Other");
-    persistDraftState();
-  });
-
-  document.getElementById("firstAgencyOther").addEventListener("input", (e) => {
-    state.incident.firstAgencyOther = e.target.value;
-    persistDraftState();
-  });
-
-  document.getElementById("flagMembersBeforeBtn").addEventListener("click", () => {
-    state.incident.flags.membersBefore = !state.incident.flags.membersBefore;
-    renderIncidentFlagButtons();
-    persistDraftState();
-  });
-
-  document.getElementById("flagAarRequiredBtn").addEventListener("click", () => {
-    state.incident.flags.aarRequired = !state.incident.flags.aarRequired;
-    renderIncidentFlagButtons();
-    persistDraftState();
-  });
-
-  document.getElementById("flagHotDebriefBtn").addEventListener("click", () => {
-    state.incident.flags.hotDebrief = !state.incident.flags.hotDebrief;
-    renderIncidentFlagButtons();
-    persistDraftState();
-  });
-}
-
-function bindSceneBrigadesListeners() {
-  document.getElementById("brigadeOnSceneSelect").addEventListener("change", (e) => {
-    const otherInput = document.getElementById("brigadeOnSceneOther");
-    otherInput.classList.toggle("hidden", e.target.value !== "Other");
-  });
-
-  document.getElementById("addBrigadeOnSceneBtn").addEventListener("click", addBrigadeOnSceneFromUi);
-}
-
-function addBrigadeOnSceneFromUi() {
-  const select = document.getElementById("brigadeOnSceneSelect");
-  const other = document.getElementById("brigadeOnSceneOther");
-  let value = select.value;
-
-  if (!value) return;
-
-  if (value === "Other") {
-    value = other.value.trim().toUpperCase();
-    if (!value) return;
+  if (el("resetFirsBtn")) {
+    el("resetFirsBtn").addEventListener("click", () => {
+      state.incident.firsCode = "";
+      el("firsCode").value = "";
+      updateFirsLabel();
+      persistDraft();
+    });
   }
 
-  if (!state.incident.brigadesOnScene.includes(value)) {
-    state.incident.brigadesOnScene.push(value);
+  if (el("firstAgencySelect")) {
+    el("firstAgencySelect").addEventListener("change", (e) => {
+      state.incident.firstAgency = e.target.value;
+      el("firstAgencyOther").classList.toggle("hidden", e.target.value !== "Other");
+      persistDraft();
+    });
   }
 
-  select.value = "";
-  other.value = "";
-  other.classList.add("hidden");
-  renderBrigadesOnScene();
-  persistDraftState();
+  if (el("firstAgencyOther")) {
+    el("firstAgencyOther").addEventListener("input", (e) => {
+      state.incident.firstAgencyOther = e.target.value;
+      persistDraft();
+    });
+  }
+
+  if (el("flagMembersBeforeBtn")) {
+    el("flagMembersBeforeBtn").addEventListener("click", () => {
+      state.incident.flags.membersBefore = !state.incident.flags.membersBefore;
+      renderIncidentFlagButtons();
+      persistDraft();
+    });
+  }
+
+  if (el("flagAarRequiredBtn")) {
+    el("flagAarRequiredBtn").addEventListener("click", () => {
+      state.incident.flags.aarRequired = !state.incident.flags.aarRequired;
+      renderIncidentFlagButtons();
+      persistDraft();
+    });
+  }
+
+  if (el("flagHotDebriefBtn")) {
+    el("flagHotDebriefBtn").addEventListener("click", () => {
+      state.incident.flags.hotDebrief = !state.incident.flags.hotDebrief;
+      renderIncidentFlagButtons();
+      persistDraft();
+    });
+  }
 }
 
-function removeBrigadeOnScene(code) {
-  state.incident.brigadesOnScene = state.incident.brigadesOnScene.filter((b) => b !== code);
-  renderBrigadesOnScene();
-  persistDraftState();
+function bindSceneBrigadeEvents() {
+  if (el("brigadeOnSceneSelect")) {
+    el("brigadeOnSceneSelect").addEventListener("change", (e) => {
+      el("brigadeOnSceneOther").classList.toggle("hidden", e.target.value !== "Other");
+    });
+  }
+
+  if (el("addBrigadeOnSceneBtn")) {
+    el("addBrigadeOnSceneBtn").addEventListener("click", addBrigadeOnSceneFromUi);
+  }
 }
 
-function renderBrigadesOnScene() {
-  const container = document.getElementById("brigadesOnSceneChips");
-  container.innerHTML = "";
-
-  state.incident.brigadesOnScene.forEach((code) => {
-    const chip = document.createElement("div");
-    chip.className = "scene-chip";
-    chip.innerHTML = `<span>${escapeHtml(code)}</span><button type="button" aria-label="Remove ${escapeHtml(code)}">×</button>`;
-    chip.querySelector("button").addEventListener("click", () => removeBrigadeOnScene(code));
-    container.appendChild(chip);
-  });
-}
-
-function bindStructureListeners() {
+function bindStructureEvents() {
   document.querySelectorAll('input[name="structureRequired"]').forEach((radio) => {
     radio.addEventListener("change", () => {
-      state.structure.required = document.querySelector('input[name="structureRequired"]:checked').value === "yes";
-      document.getElementById("structureFormWrap").classList.toggle("hidden", !state.structure.required);
-      persistDraftState();
+      const checked = document.querySelector('input[name="structureRequired"]:checked');
+      state.structure.required = checked?.value === "yes";
+      el("structureFormWrap").classList.toggle("hidden", !state.structure.required);
+      persistDraft();
     });
   });
 
-  const structureFields = [
+  [
     "structurePropertyType", "structureLevels", "structureOccupancy", "structureConstruction",
     "fireAreaOrigin", "fireAreaExtent", "fireAreaComments",
     "fireFuelLoad", "fireBehaviour", "fireMaterialComments",
     "detectionType", "alarmActivated", "detectionComments",
     "suppressionType", "suppressionWorked", "suppressionComments",
     "portableExtinguisher", "portableOther", "portableComments"
-  ];
-
-  structureFields.forEach((id) => {
-    document.getElementById(id).addEventListener("input", collectStructureData);
+  ].forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.addEventListener("input", collectStructureData);
   });
 
-  document.getElementById("hose64").addEventListener("input", collectHoseUse);
-  document.getElementById("hose38").addEventListener("input", collectHoseUse);
-  document.getElementById("hose25").addEventListener("input", collectHoseUse);
-  document.getElementById("hoseLiveReel").addEventListener("input", collectHoseUse);
-}
-
-function bindVehicleListeners() {
-  document.getElementById("vehicleCount").addEventListener("change", (e) => {
-    setVehicleCount(Number(e.target.value));
+  ["hose64", "hose38", "hose25", "hoseLiveReel"].forEach((id) => {
+    const node = el(id);
+    if (!node) return;
+    node.addEventListener("input", collectHoseUse);
   });
 }
 
-function bindAgencyListeners() {
-  document.getElementById("addAgencyBtn").addEventListener("click", () => {
-    const type = document.getElementById("agencyType").value;
-    if (!type) return;
-    addAgencyBlock(type);
-    document.getElementById("agencyType").value = "";
-  });
+function bindVehicleEvents() {
+  if (el("vehicleCount")) {
+    el("vehicleCount").addEventListener("change", (e) => {
+      setVehicleCount(Number(e.target.value));
+    });
+  }
 }
 
-function bindSendListeners() {
-  document.getElementById("finishBtn").addEventListener("click", handleFinish);
-  document.getElementById("sendSmsBtn").addEventListener("click", sendSms);
-  document.getElementById("sendEmailBtn").addEventListener("click", sendEmail);
-  document.getElementById("saveLocalBtn").addEventListener("click", saveReportLocally);
+function bindAgencyEvents() {
+  if (el("addAgencyBtn")) {
+    el("addAgencyBtn").addEventListener("click", () => {
+      const type = el("agencyType").value;
+      if (!type) return;
+      addAgencyBlock(type);
+      el("agencyType").value = "";
+    });
+  }
+}
+
+function bindSendEvents() {
+  if (el("finishBtn")) el("finishBtn").addEventListener("click", handleFinish);
+  if (el("sendSmsBtn")) el("sendSmsBtn").addEventListener("click", sendSms);
+  if (el("sendEmailBtn")) el("sendEmailBtn").addEventListener("click", sendEmail);
+  if (el("saveLocalBtn")) el("saveLocalBtn").addEventListener("click", saveReportLocally);
 }
 
 /* =========================================================
-   4. OCR MODULE
+   OCR / IMAGE PREVIEW
    ========================================================= */
+
 function handleImageUpload(e) {
   const file = e.target.files?.[0] || null;
   state.ui.pagerImageFile = file;
-  setOcrStatus(file ? `Selected: ${file.name}` : "");
-  if (file) {
-    runOcrPipeline();
+
+  if (!file) {
+    state.ui.pagerPreviewUrl = "";
+    state.ui.pagerCropPreviewUrl = "";
+    renderPagerPreviews();
+    setStatus("ocrStatus", "No screenshot selected.");
+    return;
   }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    state.ui.pagerPreviewUrl = reader.result;
+    state.ui.pagerCropPreviewUrl = "";
+    renderPagerPreviews();
+    setStatus("ocrStatus", `Loaded ${file.name}. Scanning...`);
+    runOcrPipeline();
+  };
+  reader.onerror = () => {
+    setStatus("ocrStatus", "Could not read screenshot file.");
+  };
+  reader.readAsDataURL(file);
 }
 
 async function runOcrPipeline() {
   if (!state.ui.pagerImageFile) {
-    setOcrStatus("Please upload a pager screenshot first.");
+    setStatus("ocrStatus", "Please upload a pager screenshot first.");
     return;
   }
 
-  setOcrStatus("Scanning screenshot...");
-  try {
-    const imageBitmap = await createImageBitmap(state.ui.pagerImageFile);
-    const rectangles = findPagerRectangles(imageBitmap);
-    const selected = rectangles.length ? selectBestPagerRectangle(rectangles) : null;
-    const cropCanvas = cropPagerRectangle(imageBitmap, selected);
-    const rawText = await runPagerOCR(cropCanvas);
-    const parsed = parsePagerMessage(rawText);
+  if (typeof Tesseract === "undefined") {
+    setStatus("ocrStatus", "OCR library not loaded.");
+    return;
+  }
 
-    if (!validatePagerText(parsed)) {
-      setOcrStatus("Scan ran, but the pager details were not strong enough to safely populate fields.");
+  try {
+    setStatus("ocrStatus", "Scanning screenshot...");
+
+    const imageBitmap = await createImageBitmap(state.ui.pagerImageFile);
+    const rects = findPagerRectangles(imageBitmap);
+    const selectedRect = rects.length ? selectBestPagerRectangle(rects) : null;
+
+    const cropCanvas = cropPagerRectangle(imageBitmap, selectedRect);
+    state.ui.pagerCropPreviewUrl = cropCanvas.toDataURL("image/png");
+    renderPagerPreviews();
+
+    let text = await runPagerOCR(cropCanvas);
+    let parsed = parsePagerMessage(text);
+
+    if (!isUsefulPagerParse(parsed)) {
+      const fullCanvas = cropPagerRectangle(imageBitmap, null);
+      text = await runPagerOCR(fullCanvas);
+      const fullParsed = parsePagerMessage(text);
+      if (scorePagerParse(fullParsed) >= scorePagerParse(parsed)) {
+        parsed = fullParsed;
+        state.ui.pagerCropPreviewUrl = fullCanvas.toDataURL("image/png");
+        renderPagerPreviews();
+      }
+    }
+
+    if (!isUsefulPagerParse(parsed)) {
+      setStatus("ocrStatus", "Scan ran, but the pager details were too weak to populate safely.");
       return;
     }
 
     populateIncidentFields(parsed);
-    state.incident.pagerRawText = rawText;
-    setOcrStatus("Pager details extracted.");
-    persistDraftState();
+    state.incident.pagerRawText = parsed.rawText || "";
+    setStatus("ocrStatus", "Pager details extracted.");
+    persistDraft();
   } catch (error) {
-    console.error(error);
-    setOcrStatus("Scan failed. Try a cleaner screenshot or enter details manually.");
+    console.error("OCR failed", error);
+    setStatus("ocrStatus", "Scan failed. Try a clearer screenshot.");
+  }
+}
+
+function renderPagerPreviews() {
+  const preview = el("pagerPreviewImage");
+  const previewEmpty = el("pagerPreviewEmpty");
+  const crop = el("pagerCropPreviewImage");
+  const cropEmpty = el("pagerCropPreviewEmpty");
+
+  if (preview) {
+    if (state.ui.pagerPreviewUrl) {
+      preview.src = state.ui.pagerPreviewUrl;
+      preview.classList.remove("hidden");
+      if (previewEmpty) previewEmpty.classList.add("hidden");
+    } else {
+      preview.src = "";
+      preview.classList.add("hidden");
+      if (previewEmpty) previewEmpty.classList.remove("hidden");
+    }
+  }
+
+  if (crop) {
+    if (state.ui.pagerCropPreviewUrl) {
+      crop.src = state.ui.pagerCropPreviewUrl;
+      crop.classList.remove("hidden");
+      if (cropEmpty) cropEmpty.classList.add("hidden");
+    } else {
+      crop.src = "";
+      crop.classList.add("hidden");
+      if (cropEmpty) cropEmpty.classList.remove("hidden");
+    }
   }
 }
 
@@ -433,28 +689,30 @@ function findPagerRectangles(imageBitmap) {
   for (let y = 0; y < height; y++) {
     let darkPixels = 0;
     for (let x = 0; x < width; x++) {
-      const index = (y * width + x) * 4;
-      const avg = (data[index] + data[index + 1] + data[index + 2]) / 3;
-      if (avg < 180) darkPixels++;
+      const i = (y * width + x) * 4;
+      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      if (avg < 190) darkPixels++;
     }
     rowScores.push(darkPixels / width);
   }
 
-  const candidateBands = [];
+  const bands = [];
   let start = null;
+
   for (let i = 0; i < rowScores.length; i++) {
-    if (rowScores[i] > 0.12 && start === null) start = i;
-    if ((rowScores[i] <= 0.12 || i === rowScores.length - 1) && start !== null) {
+    if (rowScores[i] > 0.10 && start === null) start = i;
+    if ((rowScores[i] <= 0.10 || i === rowScores.length - 1) && start !== null) {
       const end = i;
-      if (end - start > 120) {
-        candidateBands.push({ x: 0, y: start, width, height: end - start });
+      const bandHeight = end - start;
+      if (bandHeight > 100) {
+        bands.push({ x: 0, y: start, width, height: bandHeight });
       }
       start = null;
     }
   }
 
-  if (!candidateBands.length) return [{ x: 0, y: 0, width, height }];
-  return candidateBands.slice(0, 5);
+  if (!bands.length) return [{ x: 0, y: 0, width, height }];
+  return bands.slice(0, 5);
 }
 
 function selectBestPagerRectangle(rectangles) {
@@ -470,6 +728,7 @@ function cropPagerRectangle(imageBitmap, rect) {
 
   canvas.width = width;
   canvas.height = height;
+
   const ctx = canvas.getContext("2d");
   ctx.drawImage(imageBitmap, x, y, width, height, 0, 0, width, height);
   return canvas;
@@ -481,13 +740,13 @@ async function runPagerOCR(canvas) {
 }
 
 function parsePagerMessage(rawText) {
-  const text = (rawText || "").replace(/\r/g, "\n").trim();
+  const text = String(rawText || "").replace(/\r/g, "\n").trim();
   const upper = text.toUpperCase();
   const compact = upper.replace(/\n/g, " ");
 
-  const eventNumber = (upper.match(/\bF\d{9}\b/) || [])[0] || "";
+  const eventNumber = (compact.match(/\bF\d{9}\b/) || [])[0] || "";
 
-  const dateMatch = upper.match(/\b(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})\b/);
+  const dateMatch = compact.match(/\b(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})\b/);
   let pagerDate = "";
   if (dateMatch) {
     const day = dateMatch[1];
@@ -497,11 +756,11 @@ function parsePagerMessage(rawText) {
     pagerDate = `${year}-${month}-${day}`;
   }
 
-  const timeMatch = upper.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  const timeMatch = compact.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
   const pagerTime = timeMatch ? `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}` : "";
 
-  const brigadeCode = (upper.match(/\b(CONN|GROV|FRES)\d\b/) || [])[0] || "";
-  const incidentClassMatch = upper.match(/\b(ALAR|STRU|NONS|INCI|G&SC)(C1|C3)?\b/);
+  const brigadeCode = (compact.match(/\b(CONN|GROV|FRES)\d\b/) || [])[0] || "";
+  const incidentClassMatch = compact.match(/\b(ALAR|STRU|NONS|INCI|G&SC)(C1|C3)?\b/);
   const incidentType = incidentClassMatch?.[1] || "";
   const codeLevel = incidentClassMatch?.[2] || "";
 
@@ -510,7 +769,7 @@ function parsePagerMessage(rawText) {
 
   return {
     rawText: text,
-    upper,
+    upper: compact,
     eventNumber,
     pagerDate,
     pagerTime,
@@ -523,10 +782,10 @@ function parsePagerMessage(rawText) {
 }
 
 function extractPagerAddress(text) {
-  const slashMatch = text.match(/(\d{1,5}\s+[A-Z0-9\s.'-]+?\s(?:ST|RD|AV))\s*\//i);
-  if (slashMatch) return normaliseSpacing(slashMatch[1]);
+  const withSlash = text.match(/(\d{1,5}\s+[A-Z0-9.' -]+?\s(?:ST|RD|AV))\s*\//i);
+  if (withSlash) return normaliseSpacing(withSlash[1]);
 
-  const fallback = text.match(/(\d{1,5}\s+[A-Z0-9\s.'-]+?\s(?:ST|RD|AV))\b/i);
+  const fallback = text.match(/(\d{1,5}\s+[A-Z0-9.' -]+?\s(?:ST|RD|AV))\b/i);
   if (fallback) return normaliseSpacing(fallback[1]);
 
   return "";
@@ -535,15 +794,23 @@ function extractPagerAddress(text) {
 function extractKnownBrigades(text) {
   const found = [];
   CONFIG.BRIGADE_SCENE_OPTIONS.forEach((code) => {
-    if (text.includes(code) && !found.includes(code)) {
-      found.push(code);
-    }
+    if (text.includes(code) && !found.includes(code)) found.push(code);
   });
   return found;
 }
 
-function validatePagerText(parsed) {
-  return !!(parsed.eventNumber || parsed.address || parsed.brigadeCode);
+function scorePagerParse(parsed) {
+  let score = 0;
+  if (parsed.eventNumber) score += 3;
+  if (parsed.address) score += 4;
+  if (parsed.brigadeCode) score += 2;
+  if (parsed.incidentType) score += 2;
+  if (parsed.pagerTime) score += 1;
+  return score;
+}
+
+function isUsefulPagerParse(parsed) {
+  return scorePagerParse(parsed) >= 4;
 }
 
 function populateIncidentFields(parsed) {
@@ -567,24 +834,62 @@ function populateIncidentFields(parsed) {
 }
 
 /* =========================================================
-   5. INCIDENT MODULE
+   INCIDENT RENDER
    ========================================================= */
+
+function addBrigadeOnSceneFromUi() {
+  const select = el("brigadeOnSceneSelect");
+  const other = el("brigadeOnSceneOther");
+  let value = select.value;
+
+  if (!value) return;
+
+  if (value === "Other") {
+    value = normaliseSpacing(other.value).toUpperCase();
+    if (!value) return;
+  }
+
+  if (!state.incident.brigadesOnScene.includes(value)) {
+    state.incident.brigadesOnScene.push(value);
+  }
+
+  select.value = "";
+  other.value = "";
+  other.classList.add("hidden");
+  renderBrigadesOnScene();
+  persistDraft();
+}
+
+function removeBrigadeOnScene(code) {
+  state.incident.brigadesOnScene = state.incident.brigadesOnScene.filter((b) => b !== code);
+  renderBrigadesOnScene();
+  persistDraft();
+}
+
+function renderBrigadesOnScene() {
+  const container = el("brigadesOnSceneChips");
+  if (!container) return;
+  container.innerHTML = "";
+
+  state.incident.brigadesOnScene.forEach((code) => {
+    const chip = document.createElement("div");
+    chip.className = "scene-chip";
+    chip.innerHTML = `<span>${escapeHtml(code)}</span><button type="button">×</button>`;
+    chip.querySelector("button").addEventListener("click", () => removeBrigadeOnScene(code));
+    container.appendChild(chip);
+  });
+}
+
 function updateBrigadeRole() {
   const code = (state.incident.brigadeCode || "").toUpperCase().trim();
   state.incident.brigadeRole = code.startsWith("CONN") ? "Primary" : code ? "Support" : "";
-  document.getElementById("brigadeRole").value = state.incident.brigadeRole;
-  persistDraftState();
+  if (el("brigadeRole")) el("brigadeRole").value = state.incident.brigadeRole;
+  persistDraft();
 }
 
 function updateFirsLabel() {
-  document.getElementById("firsLabel").textContent = state.incident.firsCode ? "FIRS Code" : "Paste FIRS";
-}
-
-function evaluateMvaAutoTrigger(text) {
-  const hasMatch = CONFIG.MVA_KEYWORDS.some((keyword) => text.includes(keyword));
-  if (hasMatch) {
-    document.getElementById("vehicleSection").classList.add("open");
-    if (state.vehicles.length === 0) setVehicleCount(1);
+  if (el("firsLabel")) {
+    el("firsLabel").textContent = state.incident.firsCode ? "FIRS Code" : "Paste FIRS";
   }
 }
 
@@ -592,249 +897,30 @@ function updateStructureVisibilityByIncidentType() {
   const isStructure = state.incident.incidentType === "STRU";
   if (!isStructure) {
     state.structure.required = false;
-    document.querySelector('input[name="structureRequired"][value="no"]').checked = true;
-    document.getElementById("structureFormWrap").classList.add("hidden");
+    const noRadio = document.querySelector('input[name="structureRequired"][value="no"]');
+    if (noRadio) noRadio.checked = true;
+    if (el("structureFormWrap")) el("structureFormWrap").classList.add("hidden");
   }
-  persistDraftState();
+  persistDraft();
 }
 
 function renderIncidentFlagButtons() {
-  document.getElementById("flagMembersBeforeBtn").classList.toggle("mini-chip-active", state.incident.flags.membersBefore);
-  document.getElementById("flagAarRequiredBtn").classList.toggle("mini-chip-active", state.incident.flags.aarRequired);
-  document.getElementById("flagHotDebriefBtn").classList.toggle("mini-chip-active", state.incident.flags.hotDebrief);
+  el("flagMembersBeforeBtn")?.classList.toggle("mini-chip-active", state.incident.flags.membersBefore);
+  el("flagAarRequiredBtn")?.classList.toggle("mini-chip-active", state.incident.flags.aarRequired);
+  el("flagHotDebriefBtn")?.classList.toggle("mini-chip-active", state.incident.flags.hotDebrief);
 }
 
-/* =========================================================
-   6. VEHICLE MODULE
-   ========================================================= */
-function setVehicleCount(count) {
-  const safeCount = Math.max(0, Math.min(CONFIG.MAX_VEHICLES, count));
-  while (state.vehicles.length < safeCount) state.vehicles.push(createBlankVehicle(state.vehicles.length + 1));
-  while (state.vehicles.length > safeCount) state.vehicles.pop();
-  renderVehicleBlocks();
-  persistDraftState();
-}
-
-function createBlankVehicle(index) {
-  return {
-    id: cryptoRandomId(),
-    index,
-    make: "",
-    makeOther: "",
-    model: "",
-    rego: "",
-    state: "VIC",
-    contactName: "",
-    contactNumber: "",
-    occupants: "Unknown",
-    trapped: "Unknown",
-    airbagsDeployed: "Unknown",
-    stability: "Unknown",
-    propulsion: "Unknown",
-    propulsionOther: ""
-  };
-}
-
-function renderVehicleBlocks() {
-  const container = document.getElementById("vehicleBlocks");
-  container.innerHTML = "";
-
-  state.vehicles.forEach((vehicle, i) => {
-    const block = document.createElement("div");
-    block.className = "vehicle-block";
-    block.innerHTML = `
-      <h4>Vehicle ${i + 1}</h4>
-      <div class="form-grid">
-        <label>
-          Vehicle Make
-          <input type="text" list="vehicleMakeList" data-vehicle-id="${vehicle.id}" data-field="make" value="${escapeHtml(vehicle.make)}" placeholder="Search make" />
-        </label>
-
-        <label class="${vehicle.make === "Other" ? "" : "hidden"}" data-other-make-wrap="${vehicle.id}">
-          Other Make
-          <input type="text" data-vehicle-id="${vehicle.id}" data-field="makeOther" value="${escapeHtml(vehicle.makeOther)}" />
-        </label>
-
-        <label>Vehicle Model<input type="text" data-vehicle-id="${vehicle.id}" data-field="model" value="${escapeHtml(vehicle.model)}" /></label>
-        <label>Rego<input type="text" data-vehicle-id="${vehicle.id}" data-field="rego" value="${escapeHtml(vehicle.rego)}" /></label>
-
-        <label>
-          State
-          <select data-vehicle-id="${vehicle.id}" data-field="state">
-            ${CONFIG.STATES.map((s) => `<option value="${s}" ${vehicle.state === s ? "selected" : ""}>${s}</option>`).join("")}
-          </select>
-        </label>
-
-        <label>Driver / Contact Name<input type="text" data-vehicle-id="${vehicle.id}" data-field="contactName" value="${escapeHtml(vehicle.contactName)}" /></label>
-        <label>Driver / Contact Number<input type="text" data-vehicle-id="${vehicle.id}" data-field="contactNumber" value="${escapeHtml(vehicle.contactNumber)}" /></label>
-
-        <label>
-          Occupants
-          <select data-vehicle-id="${vehicle.id}" data-field="occupants">
-            ${CONFIG.OCCUPANTS.map((v) => `<option value="${v}" ${vehicle.occupants === v ? "selected" : ""}>${v}</option>`).join("")}
-          </select>
-        </label>
-
-        <label>
-          Trapped
-          <select data-vehicle-id="${vehicle.id}" data-field="trapped">
-            ${CONFIG.TRI_STATE.map((v) => `<option value="${v}" ${vehicle.trapped === v ? "selected" : ""}>${v}</option>`).join("")}
-          </select>
-        </label>
-
-        <label>
-          Airbags Deployed
-          <select data-vehicle-id="${vehicle.id}" data-field="airbagsDeployed">
-            ${CONFIG.TRI_STATE.map((v) => `<option value="${v}" ${vehicle.airbagsDeployed === v ? "selected" : ""}>${v}</option>`).join("")}
-          </select>
-        </label>
-
-        <label>
-          Vehicle Stability
-          <select data-vehicle-id="${vehicle.id}" data-field="stability">
-            ${CONFIG.VEHICLE_STABILITY.map((v) => `<option value="${v}" ${vehicle.stability === v ? "selected" : ""}>${v}</option>`).join("")}
-          </select>
-        </label>
-
-        <label>
-          Vehicle Type / Propulsion
-          <select data-vehicle-id="${vehicle.id}" data-field="propulsion">
-            ${CONFIG.VEHICLE_PROPULSION.map((v) => `<option value="${escapeHtml(v)}" ${vehicle.propulsion === v ? "selected" : ""}>${escapeHtml(v)}</option>`).join("")}
-          </select>
-        </label>
-
-        <label class="${vehicle.propulsion === "Other" ? "" : "hidden"}" data-other-propulsion-wrap="${vehicle.id}">
-          Other Propulsion
-          <input type="text" data-vehicle-id="${vehicle.id}" data-field="propulsionOther" value="${escapeHtml(vehicle.propulsionOther)}" />
-        </label>
-      </div>
-    `;
-    container.appendChild(block);
-  });
-
-  renderVehicleMakesDatalist();
-  bindVehicleBlockInputs();
-  document.getElementById("vehicleCount").value = String(state.vehicles.length);
-}
-
-function renderVehicleMakesDatalist() {
-  let list = document.getElementById("vehicleMakeList");
-  if (!list) {
-    list = document.createElement("datalist");
-    list.id = "vehicleMakeList";
-    document.body.appendChild(list);
-  }
-  list.innerHTML = CONFIG.VEHICLE_MAKES.map((make) => `<option value="${make}"></option>`).join("");
-}
-
-function bindVehicleBlockInputs() {
-  document.querySelectorAll("[data-vehicle-id]").forEach((el) => {
-    el.addEventListener("input", updateVehicleField);
-    el.addEventListener("change", updateVehicleField);
-  });
-}
-
-function updateVehicleField(e) {
-  const vehicle = state.vehicles.find((v) => v.id === e.target.dataset.vehicleId);
-  if (!vehicle) return;
-  vehicle[e.target.dataset.field] = e.target.value;
-
-  const otherMakeWrap = document.querySelector(`[data-other-make-wrap="${vehicle.id}"]`);
-  const otherPropulsionWrap = document.querySelector(`[data-other-propulsion-wrap="${vehicle.id}"]`);
-  if (otherMakeWrap) otherMakeWrap.classList.toggle("hidden", vehicle.make !== "Other");
-  if (otherPropulsionWrap) otherPropulsionWrap.classList.toggle("hidden", vehicle.propulsion !== "Other");
-
-  persistDraftState();
-}
-
-/* =========================================================
-   7. STRUCTURE FIRE MODULE
-   ========================================================= */
-function collectStructureData() {
-  state.structure.propertyType = document.getElementById("structurePropertyType").value;
-  state.structure.levels = document.getElementById("structureLevels").value;
-  state.structure.occupancy = document.getElementById("structureOccupancy").value;
-  state.structure.construction = document.getElementById("structureConstruction").value;
-  state.structure.fireAreaOrigin = document.getElementById("fireAreaOrigin").value;
-  state.structure.fireAreaExtent = document.getElementById("fireAreaExtent").value;
-  state.structure.fireAreaComments = document.getElementById("fireAreaComments").value;
-  state.structure.fireFuelLoad = document.getElementById("fireFuelLoad").value;
-  state.structure.fireBehaviour = document.getElementById("fireBehaviour").value;
-  state.structure.fireMaterialComments = document.getElementById("fireMaterialComments").value;
-  state.structure.detectionType = document.getElementById("detectionType").value;
-  state.structure.alarmActivated = document.getElementById("alarmActivated").value;
-  state.structure.detectionComments = document.getElementById("detectionComments").value;
-  state.structure.suppressionType = document.getElementById("suppressionType").value;
-  state.structure.suppressionWorked = document.getElementById("suppressionWorked").value;
-  state.structure.suppressionComments = document.getElementById("suppressionComments").value;
-  state.structure.portableExtinguisher = document.getElementById("portableExtinguisher").value;
-  state.structure.portableOther = document.getElementById("portableOther").value;
-  state.structure.portableComments = document.getElementById("portableComments").value;
-  persistDraftState();
-}
-
-function formatStructureReport() {
-  if (!(state.incident.incidentType === "STRU" && state.structure.required)) return "";
-
-  const s = state.structure;
-  return [
-    "Structure Fire",
-    lineIfValue("Property Type", s.propertyType),
-    lineIfValue("Building Height / Levels", s.levels),
-    lineIfValue("Occupancy", s.occupancy),
-    lineIfValue("Construction Type", s.construction),
-    lineIfValue("Area of Origin", s.fireAreaOrigin),
-    lineIfValue("Extent of Fire", s.fireAreaExtent),
-    lineIfValue("Fire Area Comments", s.fireAreaComments),
-    lineIfValue("Main Fuel Load", s.fireFuelLoad),
-    lineIfValue("Smoke / Fire Behaviour", s.fireBehaviour),
-    lineIfValue("Material Comments", s.fireMaterialComments),
-    lineIfValue("Detection Type", s.detectionType),
-    lineIfValue("Alarm Activated", s.alarmActivated),
-    lineIfValue("Detection Comments", s.detectionComments),
-    lineIfValue("Suppression Type", s.suppressionType),
-    lineIfValue("Suppression Worked", s.suppressionWorked),
-    lineIfValue("Suppression Comments", s.suppressionComments),
-    lineIfValue("Extinguisher Use", s.portableExtinguisher),
-    lineIfValue("Portable Other", s.portableOther),
-    lineIfValue("Portable Equipment Comments", s.portableComments)
-  ].filter(Boolean).join("\n");
-}
-
-function collectHoseUse() {
-  state.hoseUse["64"] = document.getElementById("hose64").value;
-  state.hoseUse["38"] = document.getElementById("hose38").value;
-  state.hoseUse["25"] = document.getElementById("hose25").value;
-  state.hoseUse["Live Reel"] = document.getElementById("hoseLiveReel").value;
-  persistDraftState();
-}
-
-/* =========================================================
-   8. RESPONDER MODULE
-   ========================================================= */
-function ensureMinimumResponderRows() {
-  if (!Array.isArray(state.responders.connewarre) || !state.responders.connewarre.length) {
-    state.responders.connewarre = [createResponder("connewarre")];
-  }
-  if (!Array.isArray(state.responders.mtd) || !state.responders.mtd.length) {
-    state.responders.mtd = [createResponder("mtd")];
+function evaluateMvaAutoTrigger(text) {
+  const hasMatch = CONFIG.MVA_KEYWORDS.some((keyword) => text.includes(keyword));
+  if (hasMatch) {
+    el("vehicleSection")?.classList.add("open");
+    if (state.vehicles.length === 0) setVehicleCount(1);
   }
 }
 
-function createResponder(group) {
-  return {
-    id: cryptoRandomId(),
-    group,
-    brigade: group === "connewarre" ? "CONN" : "",
-    name: "",
-    phone: "",
-    destination: "",
-    truckRole: "",
-    ba: false,
-    injury: false,
-    oic: false
-  };
-}
+/* =========================================================
+   RESPONDER RENDER
+   ========================================================= */
 
 function renderResponders() {
   renderConnewarreResponders();
@@ -844,7 +930,9 @@ function renderResponders() {
 }
 
 function renderConnewarreResponders() {
-  const container = document.getElementById("connewarreResponders");
+  const container = el("connewarreResponders");
+  if (!container) return;
+
   container.innerHTML = `<div class="responder-list-wrap"></div>`;
   const list = container.firstElementChild;
 
@@ -856,7 +944,9 @@ function renderConnewarreResponders() {
 }
 
 function renderMtdResponders() {
-  const container = document.getElementById("mtdResponders");
+  const container = el("mtdResponders");
+  if (!container) return;
+
   container.innerHTML = `<div class="responder-list-wrap"></div>`;
   const list = container.firstElementChild;
 
@@ -868,8 +958,9 @@ function renderMtdResponders() {
 }
 
 function renderOtherResponderLists() {
-  const directContainer = document.getElementById("directRespondersContainer");
-  const stationContainer = document.getElementById("stationRespondersContainer");
+  const directContainer = el("directRespondersContainer");
+  const stationContainer = el("stationRespondersContainer");
+  if (!directContainer || !stationContainer) return;
 
   const direct = getAllResponders().filter((r) => r.name.trim() && r.destination === "Direct");
   const station = getAllResponders().filter((r) => r.name.trim() && r.destination === "Station");
@@ -885,20 +976,16 @@ function renderOtherResponderLists() {
 
 function buildResponderRow(responder, index) {
   const wrapper = document.createElement("div");
-  wrapper.innerHTML = buildResponderRowHtml(responder, index);
-  return wrapper.firstElementChild;
-}
-
-function buildResponderRowHtml(responder, index) {
   const isConn = responder.group === "connewarre";
-  const isMtd = responder.group === "mtd";
-  const nameListId = `member-list-${responder.id}`;
-  const badge = isMtd && responder.brigade ? `<div class="responder-badge">${formatBrigadeName(responder.brigade)}</div>` : "";
-  const destinations = isConn ? CONFIG.RESPONSE_DESTINATIONS_CONNEWARRE : CONFIG.RESPONSE_DESTINATIONS_MTD;
-  const hasName = !!responder.name.trim();
+  const badge = responder.group === "mtd" && responder.brigade
+    ? `<div class="responder-badge">${formatBrigadeName(responder.brigade)}</div>`
+    : "";
+
+  const destinations = isConn
+    ? CONFIG.RESPONSE_DESTINATIONS_CONNEWARRE
+    : CONFIG.RESPONSE_DESTINATIONS_MTD;
 
   const destinationButtons = destinations.map((dest) => {
-    const disabled = !hasName;
     const active = responder.destination === dest;
     return `
       <button
@@ -907,26 +994,28 @@ function buildResponderRowHtml(responder, index) {
         data-action="destination"
         data-responder-id="${responder.id}"
         data-value="${dest}"
-        ${disabled ? "disabled" : ""}
+        ${!responder.name.trim() ? "disabled" : ""}
       >${dest}</button>
     `;
   }).join("");
 
   const showTruckRoles = responder.destination === "T1" || responder.destination === "T2";
-  const roleButtons = showTruckRoles ? CONFIG.TRUCK_ROLES.map((role) => {
-    const disabled = isTruckRoleUnavailable(responder, responder.destination, role);
-    const active = responder.truckRole === role;
-    return `
-      <button
-        type="button"
-        class="mini-chip ${active ? "mini-chip-active" : ""}"
-        data-action="truck-role"
-        data-responder-id="${responder.id}"
-        data-value="${role}"
-        ${disabled && !active ? "disabled" : ""}
-      >${role}</button>
-    `;
-  }).join("") : "";
+  const roleButtons = showTruckRoles
+    ? CONFIG.TRUCK_ROLES.map((role) => {
+        const disabled = isTruckRoleUnavailable(responder, responder.destination, role);
+        const active = responder.truckRole === role;
+        return `
+          <button
+            type="button"
+            class="mini-chip ${active ? "mini-chip-active" : ""}"
+            data-action="truck-role"
+            data-responder-id="${responder.id}"
+            data-value="${role}"
+            ${disabled && !active ? "disabled" : ""}
+          >${role}</button>
+        `;
+      }).join("")
+    : "";
 
   const flagsVisible = !!responder.destination;
   const flagButtons = flagsVisible ? `
@@ -941,19 +1030,19 @@ function buildResponderRowHtml(responder, index) {
 
   const showAddMember = shouldShowAddMemberButton(responder, index);
 
-  return `
+  wrapper.innerHTML = `
     <div class="responder-row" data-responder-id="${responder.id}">
       <div class="responder-row-top">
         <div class="responder-name-wrap">
           <input
             type="text"
-            list="${nameListId}"
+            list="member-list-${responder.id}"
             placeholder="Name"
             data-action="name-input"
             data-responder-id="${responder.id}"
             value="${escapeHtml(responder.name)}"
           />
-          <datalist id="${nameListId}">
+          <datalist id="member-list-${responder.id}">
             ${datalistHtml}
           </datalist>
         </div>
@@ -988,17 +1077,18 @@ function buildResponderRowHtml(responder, index) {
         </div>
       ` : ""}
 
-      ${showAddMember ? `
-        <button type="button" class="secondary-btn compact-add-btn" data-action="add-member" data-group="${responder.group}">Add Member</button>
-      ` : ""}
+      ${showAddMember ? `<button type="button" class="secondary-btn compact-add-btn" data-action="add-member" data-group="${responder.group}">Add Member</button>` : ""}
     </div>
   `;
+
+  return wrapper.firstElementChild;
 }
 
 function bindResponderEvents(container) {
   container.querySelectorAll('[data-action="name-input"]').forEach((input) => {
     input.addEventListener("input", handleResponderNameTyping);
     input.addEventListener("change", handleResponderNameCommit);
+    input.addEventListener("blur", handleResponderNameCommit);
   });
 
   container.querySelectorAll('[data-action="destination"]').forEach((btn) => {
@@ -1043,7 +1133,7 @@ function handleResponderNameCommit(e) {
     responder.phone = inferred?.phone || responder.phone || "";
   }
 
-  persistDraftState();
+  persistDraft();
   renderResponders();
 }
 
@@ -1056,7 +1146,7 @@ function handleDestinationSelect(e) {
     responder.truckRole = "";
   }
 
-  persistDraftState();
+  persistDraft();
   renderResponders();
 }
 
@@ -1066,9 +1156,9 @@ function handleTruckRoleSelect(e) {
 
   const role = e.target.dataset.value;
   if (isTruckRoleUnavailable(responder, responder.destination, role)) return;
-  responder.truckRole = responder.truckRole === role ? "" : role;
 
-  persistDraftState();
+  responder.truckRole = responder.truckRole === role ? "" : role;
+  persistDraft();
   renderResponders();
 }
 
@@ -1090,14 +1180,14 @@ function handleResponderFlagToggle(e) {
     responder[flag] = !responder[flag];
   }
 
-  persistDraftState();
+  persistDraft();
   renderResponders();
 }
 
 function handleAddMember(e) {
   const group = e.target.dataset.group;
   state.responders[group].push(createResponder(group));
-  persistDraftState();
+  persistDraft();
   renderResponders();
 }
 
@@ -1110,7 +1200,7 @@ function handleRemoveMember(e) {
     state.responders[group].push(createResponder(group));
   }
 
-  persistDraftState();
+  persistDraft();
   renderResponders();
 }
 
@@ -1134,38 +1224,6 @@ function clearExistingOic() {
   });
 }
 
-function updateHeaderOicStatus() {
-  const el = document.getElementById("oicStatus");
-  const oic = getAllResponders().find((r) => r.oic && r.name.trim());
-
-  if (!oic) {
-    el.textContent = "APPOINT OIC";
-    el.classList.add("oic-missing");
-    state.ui.oicResponderId = "";
-    state.ui.oicName = "";
-    state.ui.oicPhone = "";
-    return;
-  }
-
-  oic.phone = oic.phone || getResponderPhoneFallback(oic) || "";
-  state.ui.oicResponderId = oic.id;
-  state.ui.oicName = oic.name;
-  state.ui.oicPhone = oic.phone;
-  el.textContent = `OIC: ${oic.name}${oic.phone ? " – " + oic.phone : ""}`;
-  el.classList.remove("oic-missing");
-}
-
-function getAllResponders() {
-  return [
-    ...state.responders.connewarre,
-    ...state.responders.mtd
-  ];
-}
-
-function findResponderById(id) {
-  return getAllResponders().find((r) => r.id === id);
-}
-
 function getResponderPhoneFallback(responder) {
   if (responder.brigade) {
     return getMemberPhone(responder.brigade, responder.name) || responder.phone || "";
@@ -1173,85 +1231,46 @@ function getResponderPhoneFallback(responder) {
   return responder.phone || "";
 }
 
-function getMemberOptionsHtml(brigadeKey, currentValue = "") {
-  const options = (state.memberLists[brigadeKey] || []).map((member) => {
-    const name = typeof member === "string" ? member : (member.name || "");
-    return `<option value="${escapeHtml(name)}"></option>`;
-  });
+function updateHeaderOicStatus() {
+  const node = el("oicStatus");
+  if (!node) return;
 
-  if (currentValue && !options.some((opt) => opt.includes(`value="${escapeHtml(currentValue)}"`))) {
-    options.unshift(`<option value="${escapeHtml(currentValue)}"></option>`);
+  const oic = getAllResponders().find((r) => r.oic && r.name.trim());
+
+  if (!oic) {
+    node.textContent = "APPOINT OIC";
+    node.classList.add("oic-missing");
+    return;
   }
 
-  return options.join("");
-}
-
-function getCombinedMtdMemberOptionsHtml(currentValue = "") {
-  const all = [
-    ...((state.memberLists.CONN || []).map((m) => ({ ...m, brigade: "CONN" }))),
-    ...((state.memberLists.GROV || []).map((m) => ({ ...m, brigade: "GROV" }))),
-    ...((state.memberLists.FRES || []).map((m) => ({ ...m, brigade: "FRES" })))
-  ];
-
-  const names = all.map((member) => {
-    const name = typeof member === "string" ? member : member.name || "";
-    return `<option value="${escapeHtml(name)}"></option>`;
-  });
-
-  if (currentValue && !names.some((opt) => opt.includes(`value="${escapeHtml(currentValue)}"`))) {
-    names.unshift(`<option value="${escapeHtml(currentValue)}"></option>`);
-  }
-
-  return [...new Set(names)].join("");
-}
-
-function inferMtdMemberRecord(memberName) {
-  const name = (memberName || "").trim().toUpperCase();
-  if (!name) return null;
-
-  const sources = [
-    { brigade: "CONN", list: state.memberLists.CONN || [] },
-    { brigade: "GROV", list: state.memberLists.GROV || [] },
-    { brigade: "FRES", list: state.memberLists.FRES || [] }
-  ];
-
-  for (const source of sources) {
-    const found = source.list.find((member) => {
-      const memberNameValue = typeof member === "string" ? member : member.name || "";
-      return memberNameValue.trim().toUpperCase() === name;
-    });
-
-    if (found) {
-      return {
-        brigade: source.brigade,
-        phone: typeof found === "string" ? "" : (found.phone || "")
-      };
-    }
-  }
-
-  return null;
+  oic.phone = oic.phone || getResponderPhoneFallback(oic);
+  node.textContent = `OIC: ${oic.name}${oic.phone ? " – " + oic.phone : ""}`;
+  node.classList.remove("oic-missing");
 }
 
 /* =========================================================
-   9. AGENCY MODULE
+   AGENCIES
    ========================================================= */
+
 function addAgencyBlock(type) {
   state.agencies.push({
     id: cryptoRandomId(),
     type,
+    otherName: "",
     officerName: "",
     contactNumber: "",
     station: "",
     badgeNumber: "",
-    comments: "",
-    otherName: ""
+    comments: ""
   });
-  renderAgencyBlocks();
-  persistDraftState();
+  renderAgencies();
+  persistDraft();
 }
 
-function renderAgencyBlocks() {
-  const container = document.getElementById("agencyBlocks");
+function renderAgencies() {
+  const container = el("agencyBlocks");
+  if (!container) return;
+
   container.innerHTML = "";
 
   state.agencies.forEach((agency) => {
@@ -1300,106 +1319,47 @@ function renderAgencyBlocks() {
     container.appendChild(block);
   });
 
-  container.querySelectorAll("[data-agency-id]").forEach((el) => {
-    el.addEventListener("input", updateAgencyField);
+  container.querySelectorAll("[data-agency-id]").forEach((field) => {
+    field.addEventListener("input", (e) => {
+      const agency = state.agencies.find((a) => a.id === e.target.dataset.agencyId);
+      if (!agency) return;
+      agency[e.target.dataset.field] = e.target.value;
+      persistDraft();
+    });
   });
 
   container.querySelectorAll("[data-remove-agency]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      state.agencies = state.agencies.filter((agency) => agency.id !== btn.dataset.removeAgency);
-      renderAgencyBlocks();
-      persistDraftState();
+      state.agencies = state.agencies.filter((a) => a.id !== btn.dataset.removeAgency);
+      renderAgencies();
+      persistDraft();
     });
   });
 }
 
-function updateAgencyField(e) {
-  const agency = state.agencies.find((a) => a.id === e.target.dataset.agencyId);
-  if (!agency) return;
-  agency[e.target.dataset.field] = e.target.value;
-  persistDraftState();
-}
+/* =========================================================
+   VEHICLES
+   ========================================================= */
 
-function formatAgencySection() {
-  if (!state.agencies.length) return "";
-
-  const lines = ["Agencies"];
-  state.agencies.forEach((agency, index) => {
-    const title = agency.type === "Other" ? (agency.otherName || "Other") : agency.type;
-    lines.push(`${index + 1}. ${title}`);
-    lines.push(...[
-      lineIfValue("Officer", agency.officerName),
-      lineIfValue("Contact", agency.contactNumber),
-      lineIfValue("Station", agency.station),
-      lineIfValue("Badge", agency.badgeNumber),
-      lineIfValue("Comments", agency.comments)
-    ].filter(Boolean));
-  });
-  return lines.join("\n");
+function renderVehicles() {
+  renderVehicleBlocks();
 }
 
 /* =========================================================
-   10. PROFILE MODULE
+   SAVED REPORTS
    ========================================================= */
-function loadProfile() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    state.profile = { ...state.profile, ...parsed };
-  } catch (error) {
-    console.warn("Profile load failed", error);
-  }
-}
-
-function saveProfileFromUi() {
-  state.profile.name = document.getElementById("profileName").value.trim();
-  state.profile.memberNumber = document.getElementById("profileMemberNumber").value.trim();
-  state.profile.contactNumber = document.getElementById("profileContactNumber").value.trim();
-  state.profile.email = document.getElementById("profileEmail").value.trim();
-  state.profile.brigade = document.getElementById("profileBrigade").value.trim() || "Connewarre";
-
-  localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(state.profile));
-  closeSettingsModal();
-}
-
-function openSettingsModal() {
-  document.getElementById("profileName").value = state.profile.name;
-  document.getElementById("profileMemberNumber").value = state.profile.memberNumber;
-  document.getElementById("profileContactNumber").value = state.profile.contactNumber;
-  document.getElementById("profileEmail").value = state.profile.email;
-  document.getElementById("profileBrigade").value = state.profile.brigade;
-  document.getElementById("settingsModal").classList.remove("hidden");
-}
-
-function closeSettingsModal() {
-  document.getElementById("settingsModal").classList.add("hidden");
-}
-
-function loadSavedReports() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.SAVED_REPORTS);
-    state.savedReports = raw ? JSON.parse(raw) : [];
-  } catch (error) {
-    state.savedReports = [];
-  }
-}
-
-function saveSavedReports() {
-  localStorage.setItem(STORAGE_KEYS.SAVED_REPORTS, JSON.stringify(state.savedReports));
-}
 
 function saveReportSummary() {
-  const subject = buildReportTitle();
+  const title = buildReportTitle();
   const body = state.ui.reportPreview || generateReport();
-  const summary = {
+
+  state.savedReports.unshift({
     id: cryptoRandomId(),
-    title: subject,
+    title,
     body,
     createdAt: new Date().toISOString()
-  };
+  });
 
-  state.savedReports.unshift(summary);
   state.savedReports = state.savedReports.slice(0, CONFIG.MAX_REPORTS);
   saveSavedReports();
   renderSavedReports();
@@ -1412,7 +1372,9 @@ function deleteSavedReport(id) {
 }
 
 function renderSavedReports() {
-  const container = document.getElementById("savedReportsList");
+  const container = el("savedReportsList");
+  if (!container) return;
+
   container.innerHTML = "";
 
   if (!state.savedReports.length) {
@@ -1438,7 +1400,7 @@ function renderSavedReports() {
     btn.addEventListener("click", () => {
       const report = state.savedReports.find((r) => r.id === btn.dataset.loadReport);
       if (!report) return;
-      document.getElementById("reportPreview").value = report.body;
+      el("reportPreview").value = report.body;
     });
   });
 
@@ -1448,33 +1410,50 @@ function renderSavedReports() {
 }
 
 /* =========================================================
-   11. VALIDATION MODULE
+   PROFILE MODAL
    ========================================================= */
+
+function openSettingsModal() {
+  if (!el("settingsModal")) return;
+  el("profileName").value = state.profile.name;
+  el("profileMemberNumber").value = state.profile.memberNumber;
+  el("profileContactNumber").value = state.profile.contactNumber;
+  el("profileEmail").value = state.profile.email;
+  el("profileBrigade").value = state.profile.brigade;
+  el("settingsModal").classList.remove("hidden");
+}
+
+function closeSettingsModal() {
+  el("settingsModal")?.classList.add("hidden");
+}
+
+function saveProfileFromUi() {
+  state.profile.name = el("profileName").value.trim();
+  state.profile.memberNumber = el("profileMemberNumber").value.trim();
+  state.profile.contactNumber = el("profileContactNumber").value.trim();
+  state.profile.email = el("profileEmail").value.trim();
+  state.profile.brigade = el("profileBrigade").value.trim() || "Connewarre";
+  saveProfile();
+  closeSettingsModal();
+}
+
+/* =========================================================
+   REPORTS / VALIDATION
+   ========================================================= */
+
 function validateResponders() {
   return getAllResponders().some((r) => r.name.trim());
 }
 
-function isPrimaryConnJob() {
-  return (state.incident.brigadeCode || "").toUpperCase().startsWith("CONN");
-}
-
 function validateReportReady() {
-  const hasResponder = validateResponders();
-  const hasOic = !!getAllResponders().find((r) => r.oic && r.name.trim());
-
   const messages = [];
-  if (!hasResponder) messages.push("At least one responder must be entered.");
-  if (isPrimaryConnJob() && !hasOic) messages.push("OIC must be selected for primary Connewarre jobs.");
-
-  return {
-    valid: messages.length === 0,
-    messages
-  };
+  if (!validateResponders()) messages.push("At least one responder must be entered.");
+  if (isPrimaryConnJob() && !getAllResponders().some((r) => r.oic && r.name.trim())) {
+    messages.push("OIC must be selected for primary Connewarre jobs.");
+  }
+  return { valid: messages.length === 0, messages };
 }
 
-/* =========================================================
-   12. REPORT GENERATOR MODULE
-   ========================================================= */
 function generateReport() {
   collectStructureData();
   collectHoseUse();
@@ -1496,7 +1475,7 @@ function generateReport() {
 
   const report = sections.join("\n\n").trim();
   state.ui.reportPreview = report;
-  document.getElementById("reportPreview").value = report;
+  if (el("reportPreview")) el("reportPreview").value = report;
   return report;
 }
 
@@ -1517,8 +1496,8 @@ function buildJobSection() {
 }
 
 function buildOicSection() {
-  const oic = getAllResponders().find((r) => r.oic);
-  if (!oic || !oic.name) return "";
+  const oic = getAllResponders().find((r) => r.oic && r.name.trim());
+  if (!oic) return "";
   return [
     "OIC",
     lineIfValue("Name", appendBrigadeIfNeeded(oic)),
@@ -1530,47 +1509,41 @@ function buildApplianceSections() {
   const grouped = {};
 
   getAllResponders()
-    .filter((r) => r.name.trim() && (r.destination === "T1" || r.destination === "T2" || r.destination === "MTD P/T"))
+    .filter((r) => r.name.trim() && ["T1", "T2", "MTD P/T"].includes(r.destination))
     .forEach((r) => {
-      const key = r.destination;
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(r);
+      if (!grouped[r.destination]) grouped[r.destination] = [];
+      grouped[r.destination].push(r);
     });
 
-  const order = ["T1", "T2", "MTD P/T"];
-  const sections = [];
+  const ordered = ["T1", "T2", "MTD P/T"];
+  const sectionBlocks = [];
 
-  order.forEach((key) => {
+  ordered.forEach((key) => {
     if (!grouped[key]?.length) return;
     const title = key === "T1" ? "Conn T1" : key === "T2" ? "Conn T2" : "MTD P/T";
     const lines = [title];
-
     grouped[key].forEach((r) => {
-      const role = r.truckRole || "Crew";
-      lines.push(`- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)} | ${role}`);
+      lines.push(`- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)} | ${r.truckRole || "Crew"}`);
     });
-
-    sections.push(lines.join("\n"));
+    sectionBlocks.push(lines.join("\n"));
   });
 
-  if (!sections.length) return "";
-  return ["Appliances", ...sections].join("\n");
+  return sectionBlocks.length ? ["Appliances", ...sectionBlocks].join("\n") : "";
 }
 
 function buildResponderSections() {
-  const directLines = getAllResponders()
+  const direct = getAllResponders()
     .filter((r) => r.name.trim() && r.destination === "Direct")
     .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}`);
 
-  const stationLines = getAllResponders()
+  const station = getAllResponders()
     .filter((r) => r.name.trim() && r.destination === "Station")
     .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}`);
 
-  const sections = [];
-  if (directLines.length) sections.push(["Direct Responders", ...directLines].join("\n"));
-  if (stationLines.length) sections.push(["Station Responders", ...stationLines].join("\n"));
-
-  return sections.join("\n\n");
+  const parts = [];
+  if (direct.length) parts.push(["Direct Responders", ...direct].join("\n"));
+  if (station.length) parts.push(["Station Responders", ...station].join("\n"));
+  return parts.join("\n\n");
 }
 
 function buildVehicleSection() {
@@ -1600,9 +1573,9 @@ function buildVehicleSection() {
 
 function buildFirstAgencySection() {
   if (!state.incident.firstAgency) return "";
-  const name = state.incident.firstAgency === "Other" ? state.incident.firstAgencyOther : state.incident.firstAgency;
-  if (!name) return "";
-  return ["First Agency On Scene", name].join("\n");
+  const value = state.incident.firstAgency === "Other" ? state.incident.firstAgencyOther : state.incident.firstAgency;
+  if (!value) return "";
+  return ["First Agency On Scene", value].join("\n");
 }
 
 function buildHoseSection() {
@@ -1612,8 +1585,7 @@ function buildHoseSection() {
 }
 
 function buildNotesSection() {
-  if (!state.incident.notes.trim()) return "";
-  return ["Notes", state.incident.notes.trim()].join("\n");
+  return state.incident.notes.trim() ? ["Notes", state.incident.notes.trim()].join("\n") : "";
 }
 
 function buildIncidentFlagsSection() {
@@ -1621,8 +1593,7 @@ function buildIncidentFlagsSection() {
   if (state.incident.flags.membersBefore) flags.push("Members before 1st appliance");
   if (state.incident.flags.aarRequired) flags.push("AAR required");
   if (state.incident.flags.hotDebrief) flags.push("Hot debrief conducted");
-  if (!flags.length) return "";
-  return ["Incident Flags", ...flags.map((f) => `- ${f}`)].join("\n");
+  return flags.length ? ["Incident Flags", ...flags.map((f) => `- ${f}`)].join("\n") : "";
 }
 
 function buildSignoff() {
@@ -1635,31 +1606,39 @@ function buildSignoff() {
   ].filter(Boolean).join("\n");
 }
 
-function buildResponderSuffix(responder) {
-  const suffixes = [];
-  if (responder.oic) suffixes.push("OIC");
-  if (responder.ba) suffixes.push("BA");
-  if (responder.injury) suffixes.push("Injured");
-  return suffixes.length ? ` – ${suffixes.join(", ")}` : "";
+function formatAgencySection() {
+  if (!state.agencies.length) return "";
+  const lines = ["Agencies"];
+  state.agencies.forEach((agency, index) => {
+    const title = agency.type === "Other" ? (agency.otherName || "Other") : agency.type;
+    lines.push(`${index + 1}. ${title}`);
+    lines.push(...[
+      lineIfValue("Officer", agency.officerName),
+      lineIfValue("Contact", agency.contactNumber),
+      lineIfValue("Station", agency.station),
+      lineIfValue("Badge", agency.badgeNumber),
+      lineIfValue("Comments", agency.comments)
+    ].filter(Boolean));
+  });
+  return lines.join("\n");
 }
 
 /* =========================================================
-   13. SEND MODULE
+   SEND / PAGE UI
    ========================================================= */
+
 function handleFinish() {
   const validation = validateReportReady();
-  const validationStatus = document.getElementById("validationStatus");
-
   if (!validation.valid) {
-    validationStatus.textContent = validation.messages.join(" ");
-    document.getElementById("finishActions").classList.add("hidden");
+    setStatus("validationStatus", validation.messages.join(" "));
+    el("finishActions")?.classList.add("hidden");
     return;
   }
 
-  validationStatus.textContent = "Report ready.";
+  setStatus("validationStatus", "Report ready.");
   generateReport();
   updateQuietHoursWarning();
-  document.getElementById("finishActions").classList.remove("hidden");
+  el("finishActions")?.classList.remove("hidden");
 }
 
 async function sendSms() {
@@ -1676,8 +1655,7 @@ function sendEmail() {
   const report = generateReport();
   const subject = buildReportTitle();
   const email = state.profile.email || "";
-  const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(report)}`;
-  window.location.href = mailto;
+  window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(report)}`;
 }
 
 function saveReportLocally() {
@@ -1685,9 +1663,6 @@ function saveReportLocally() {
   saveReportSummary();
 }
 
-/* =========================================================
-   14. UI HELPERS
-   ========================================================= */
 function showPage(pageId) {
   state.ui.currentPage = pageId;
   document.querySelectorAll(".page").forEach((page) => {
@@ -1700,193 +1675,107 @@ function showPage(pageId) {
 
   if (pageId === "sendPage") {
     const validation = validateReportReady();
-    document.getElementById("validationStatus").textContent = validation.valid
-      ? "Ready to finish."
-      : validation.messages.join(" ");
+    setStatus("validationStatus", validation.valid ? "Ready to finish." : validation.messages.join(" "));
     generateReport();
     updateQuietHoursWarning();
   }
 
-  persistDraftState();
-}
-
-function toggleSection(targetId) {
-  document.getElementById(targetId).classList.toggle("open");
-}
-
-function toggleAccordion(targetId) {
-  document.getElementById(targetId).classList.toggle("open");
+  persistDraft();
 }
 
 function updateQuietHoursWarning() {
-  const warning = document.getElementById("quietHoursWarning");
-  const now = new Date();
-  const hour = now.getHours();
+  const warning = el("quietHoursWarning");
+  if (!warning) return;
+  const hour = new Date().getHours();
   const quiet = hour >= CONFIG.QUIET_HOURS.start || hour < CONFIG.QUIET_HOURS.end;
   warning.classList.toggle("hidden", !quiet);
 }
 
+/* =========================================================
+   SYNC UI
+   ========================================================= */
+
 function syncIncidentFieldsToUi() {
-  document.getElementById("eventNumber").value = state.incident.eventNumber;
-  document.getElementById("pagerDate").value = state.incident.pagerDate;
-  document.getElementById("pagerTime").value = state.incident.pagerTime;
-  document.getElementById("brigadeCode").value = state.incident.brigadeCode;
-  document.getElementById("brigadeRole").value = state.incident.brigadeRole;
-  document.getElementById("incidentType").value = state.incident.incidentType;
-  document.getElementById("codeLevel").value = state.incident.codeLevel;
-  document.getElementById("address").value = state.incident.address;
-  document.getElementById("firsCode").value = state.incident.firsCode;
-  document.getElementById("notes").value = state.incident.notes;
-  document.getElementById("firstAgencySelect").value = state.incident.firstAgency;
-  document.getElementById("firstAgencyOther").value = state.incident.firstAgencyOther;
-  document.getElementById("firstAgencyOther").classList.toggle("hidden", state.incident.firstAgency !== "Other");
+  if (el("eventNumber")) el("eventNumber").value = state.incident.eventNumber;
+  if (el("pagerDate")) el("pagerDate").value = state.incident.pagerDate;
+  if (el("pagerTime")) el("pagerTime").value = state.incident.pagerTime;
+  if (el("brigadeCode")) el("brigadeCode").value = state.incident.brigadeCode;
+  if (el("brigadeRole")) el("brigadeRole").value = state.incident.brigadeRole;
+  if (el("incidentType")) el("incidentType").value = state.incident.incidentType;
+  if (el("codeLevel")) el("codeLevel").value = state.incident.codeLevel;
+  if (el("address")) el("address").value = state.incident.address;
+  if (el("firsCode")) el("firsCode").value = state.incident.firsCode;
+  if (el("notes")) el("notes").value = state.incident.notes;
+  if (el("firstAgencySelect")) el("firstAgencySelect").value = state.incident.firstAgency;
+  if (el("firstAgencyOther")) {
+    el("firstAgencyOther").value = state.incident.firstAgencyOther;
+    el("firstAgencyOther").classList.toggle("hidden", state.incident.firstAgency !== "Other");
+  }
+
   updateFirsLabel();
   renderIncidentFlagButtons();
+  renderPagerPreviews();
 }
 
 function syncAllFieldsToUi() {
   syncIncidentFieldsToUi();
 
-  document.querySelector(`input[name="structureRequired"][value="${state.structure.required ? "yes" : "no"}"]`).checked = true;
-  document.getElementById("structureFormWrap").classList.toggle("hidden", !state.structure.required);
+  const structureRadio = document.querySelector(`input[name="structureRequired"][value="${state.structure.required ? "yes" : "no"}"]`);
+  if (structureRadio) structureRadio.checked = true;
+  if (el("structureFormWrap")) el("structureFormWrap").classList.toggle("hidden", !state.structure.required);
 
-  document.getElementById("structurePropertyType").value = state.structure.propertyType;
-  document.getElementById("structureLevels").value = state.structure.levels;
-  document.getElementById("structureOccupancy").value = state.structure.occupancy;
-  document.getElementById("structureConstruction").value = state.structure.construction;
-  document.getElementById("fireAreaOrigin").value = state.structure.fireAreaOrigin;
-  document.getElementById("fireAreaExtent").value = state.structure.fireAreaExtent;
-  document.getElementById("fireAreaComments").value = state.structure.fireAreaComments;
-  document.getElementById("fireFuelLoad").value = state.structure.fireFuelLoad;
-  document.getElementById("fireBehaviour").value = state.structure.fireBehaviour;
-  document.getElementById("fireMaterialComments").value = state.structure.fireMaterialComments;
-  document.getElementById("detectionType").value = state.structure.detectionType;
-  document.getElementById("alarmActivated").value = state.structure.alarmActivated;
-  document.getElementById("detectionComments").value = state.structure.detectionComments;
-  document.getElementById("suppressionType").value = state.structure.suppressionType;
-  document.getElementById("suppressionWorked").value = state.structure.suppressionWorked;
-  document.getElementById("suppressionComments").value = state.structure.suppressionComments;
-  document.getElementById("portableExtinguisher").value = state.structure.portableExtinguisher;
-  document.getElementById("portableOther").value = state.structure.portableOther;
-  document.getElementById("portableComments").value = state.structure.portableComments;
+  [
+    "structurePropertyType", "structureLevels", "structureOccupancy", "structureConstruction",
+    "fireAreaOrigin", "fireAreaExtent", "fireAreaComments",
+    "fireFuelLoad", "fireBehaviour", "fireMaterialComments",
+    "detectionType", "alarmActivated", "detectionComments",
+    "suppressionType", "suppressionWorked", "suppressionComments",
+    "portableExtinguisher", "portableOther", "portableComments"
+  ].forEach((id) => {
+    if (el(id)) {
+      const key = id
+        .replace("structure", "")
+        .replace("fire", "fire")
+        .replace("portable", "portable");
+    }
+  });
 
-  document.getElementById("hose64").value = state.hoseUse["64"];
-  document.getElementById("hose38").value = state.hoseUse["38"];
-  document.getElementById("hose25").value = state.hoseUse["25"];
-  document.getElementById("hoseLiveReel").value = state.hoseUse["Live Reel"];
+  if (el("structurePropertyType")) el("structurePropertyType").value = state.structure.propertyType;
+  if (el("structureLevels")) el("structureLevels").value = state.structure.levels;
+  if (el("structureOccupancy")) el("structureOccupancy").value = state.structure.occupancy;
+  if (el("structureConstruction")) el("structureConstruction").value = state.structure.construction;
+  if (el("fireAreaOrigin")) el("fireAreaOrigin").value = state.structure.fireAreaOrigin;
+  if (el("fireAreaExtent")) el("fireAreaExtent").value = state.structure.fireAreaExtent;
+  if (el("fireAreaComments")) el("fireAreaComments").value = state.structure.fireAreaComments;
+  if (el("fireFuelLoad")) el("fireFuelLoad").value = state.structure.fireFuelLoad;
+  if (el("fireBehaviour")) el("fireBehaviour").value = state.structure.fireBehaviour;
+  if (el("fireMaterialComments")) el("fireMaterialComments").value = state.structure.fireMaterialComments;
+  if (el("detectionType")) el("detectionType").value = state.structure.detectionType;
+  if (el("alarmActivated")) el("alarmActivated").value = state.structure.alarmActivated;
+  if (el("detectionComments")) el("detectionComments").value = state.structure.detectionComments;
+  if (el("suppressionType")) el("suppressionType").value = state.structure.suppressionType;
+  if (el("suppressionWorked")) el("suppressionWorked").value = state.structure.suppressionWorked;
+  if (el("suppressionComments")) el("suppressionComments").value = state.structure.suppressionComments;
+  if (el("portableExtinguisher")) el("portableExtinguisher").value = state.structure.portableExtinguisher;
+  if (el("portableOther")) el("portableOther").value = state.structure.portableOther;
+  if (el("portableComments")) el("portableComments").value = state.structure.portableComments;
+
+  if (el("hose64")) el("hose64").value = state.hoseUse["64"];
+  if (el("hose38")) el("hose38").value = state.hoseUse["38"];
+  if (el("hose25")) el("hose25").value = state.hoseUse["25"];
+  if (el("hoseLiveReel")) el("hoseLiveReel").value = state.hoseUse["Live Reel"];
 
   renderBrigadesOnScene();
-  renderResponders();
-}
-
-function persistDraftState() {
-  localStorage.setItem(STORAGE_KEYS.DRAFT_STATE, JSON.stringify(state));
-}
-
-function restoreDraftState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.DRAFT_STATE);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-
-    if (parsed.incident) {
-      state.incident = { ...state.incident, ...parsed.incident };
-      if (!Array.isArray(state.incident.brigadesOnScene)) {
-        state.incident.brigadesOnScene = [];
-      }
-    }
-    if (parsed.responders) {
-      state.responders = { ...state.responders, ...parsed.responders };
-    }
-    if (parsed.vehicles) state.vehicles = parsed.vehicles;
-    if (parsed.agencies) state.agencies = parsed.agencies;
-    if (parsed.structure) state.structure = { ...state.structure, ...parsed.structure };
-    if (parsed.hoseUse) state.hoseUse = { ...state.hoseUse, ...parsed.hoseUse };
-    if (parsed.ui) state.ui = { ...state.ui, currentPage: parsed.ui.currentPage || "incidentPage" };
-  } catch (error) {
-    console.warn("Draft restore failed", error);
-  }
 }
 
 /* =========================================================
-   UTILITIES
+   SERVICE WORKER
    ========================================================= */
+
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("service-worker.js").catch((error) => {
       console.warn("SW registration failed", error);
     });
   }
-}
-
-function setOcrStatus(message) {
-  document.getElementById("ocrStatus").textContent = message;
-}
-
-function buildReportTitle() {
-  const event = state.incident.eventNumber || "NO_EVENT";
-  const type = state.incident.incidentType || "UNKNOWN";
-  const address = (state.incident.address || "").trim() || "NO ADDRESS";
-  return `${event} – ${type} – ${address}`;
-}
-
-function formatDateForReport(value) {
-  if (!value) return "";
-  const [year, month, day] = value.split("-");
-  return `${day}/${month}/${year}`;
-}
-
-function appendBrigadeIfNeeded(responder) {
-  const brigadeName = formatBrigadeName(responder.brigade || "CONN");
-  return responder.brigade && responder.brigade !== "CONN"
-    ? `${responder.name} (${brigadeName})`
-    : responder.name;
-}
-
-function formatBrigadeName(brigadeKey) {
-  if (brigadeKey === "CONN") return "Connewarre";
-  if (brigadeKey === "GROV") return "Grovedale";
-  if (brigadeKey === "FRES") return "Freshwater Creek";
-  return brigadeKey || "";
-}
-
-function getMemberRecord(brigadeKey, memberName) {
-  if (!brigadeKey || !memberName) return null;
-
-  const members = state.memberLists[brigadeKey] || [];
-  const target = memberName.trim().toUpperCase();
-
-  return members.find((member) => {
-    const name = typeof member === "string" ? member : (member.name || "");
-    return name.trim().toUpperCase() === target;
-  }) || null;
-}
-
-function getMemberPhone(brigadeKey, memberName) {
-  const record = getMemberRecord(brigadeKey, memberName);
-  if (!record) return "";
-  if (typeof record === "string") return "";
-  return record.phone || "";
-}
-
-function lineIfValue(label, value) {
-  if (value === null || value === undefined || value === "") return "";
-  return `${label}: ${value}`;
-}
-
-function normaliseSpacing(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-
-function escapeHtml(value) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function cryptoRandomId() {
-  return `id_${Math.random().toString(36).slice(2, 11)}`;
 }
