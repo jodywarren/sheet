@@ -132,6 +132,21 @@ const state = {
 
 document.addEventListener("DOMContentLoaded", init);
 
+function createResponder(group) {
+  return {
+    id: cryptoRandomId(),
+    group,
+    brigade: group === "connewarre" ? "CONN" : "",
+    name: "",
+    phone: "",
+    destination: "",
+    truckRole: "",
+    ba: false,
+    injury: false,
+    oic: false
+  };
+}
+
 function ensureMinimumResponderRows() {
   if (!state.responders) {
     state.responders = {};
