@@ -1,52 +1,337 @@
-<!DOCTYPE html>
-<html lang="en-AU">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#b00020" />
-  <meta name="description" content="CFA Digital Turnout Sheet" />
-  <title>Turnout Sheet</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="connewarre-logo.png" />
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <div class="app-shell">
-    <header class="app-header">
-      <div class="header-left">
-        <div class="title-wrap">
-          <div>
-            <h1>TURNOUT SHEET</h1>
-            <p class="subtitle">Created by Jody Tuuta © 2026</p>
-          </div>
-        </div>
-      </div>
+* {
+  box-sizing: border-box;
+}
 
-      <div class="header-center">
-        <div id="oicStatus" class="oic-status oic-missing">APPOINT OIC</div>
-      </div>
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f4f5f7;
+  color: #111;
+}
 
-      <div class="header-right">
-        <img src="connewarre-logo.png" alt="Connewarre logo" class="brigade-logo" />
-      </div>
-    </header>
+body {
+  min-height: 100vh;
+}
 
-    <nav class="top-nav">
-      <button class="nav-btn active" data-page="incidentPage">Incident</button>
-      <button class="nav-btn" data-page="respondersPage">Responders</button>
-      <button class="nav-btn" data-page="sendPage">Send Report</button>
-      <button class="nav-btn settings-btn" id="settingsBtn" aria-label="Profile and Settings">⚙</button>
-    </nav>
+.app-shell {
+  width: 100%;
+}
 
-    <main class="main-content">
-      <section id="incidentPage" class="page active">
-        <div class="page-card">
-          <h2>Incident</h2>
+.app-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  background: #b00020;
+  color: #fff;
+  padding: 12px 16px;
+}
 
-          <div class="upload-row">
-            <label class="upload-label">
-              Upload Pager Screenshot
-              <input type="file" id="pagerUpload" accept="image/*" />
-            </label>
-            <button id="runOcrBtn" class="secondary-btn" type="button">Scan</button>
-          </div>
+.app-header h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.oic-status {
+  background: #fff;
+  color: #b00020;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 700;
+  border: 2px solid #fff;
+}
+
+.oic-missing {
+  color: #b00020;
+}
+
+.brigade-logo {
+  height: 64px;
+  width: auto;
+  object-fit: contain;
+}
+
+.top-nav {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  background: #222;
+  padding: 10px 12px;
+}
+
+.nav-btn,
+.primary-btn,
+.secondary-btn,
+.tiny-btn,
+.stack-toggle,
+.accordion-toggle,
+.mini-chip {
+  appearance: none;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #111;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.nav-btn.active,
+.primary-btn,
+.mini-chip-active {
+  background: #b00020;
+  color: #fff;
+  border-color: #b00020;
+}
+
+.main-content {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.page {
+  display: none;
+}
+
+.page.active {
+  display: block;
+}
+
+.page-card,
+.modal-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 600;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+  color: #111;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.inline-field,
+.upload-row,
+.page-actions,
+.page-actions.dual,
+.agency-toolbar,
+.scene-brigades-toolbar,
+.inline-radio,
+.vehicle-header-row,
+.finish-actions,
+.saved-report-actions,
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.page-actions {
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.page-actions.dual {
+  justify-content: space-between;
+}
+
+.status-text {
+  margin: 8px 0 12px;
+  color: #555;
+}
+
+.warning-box {
+  background: #fff7d6;
+  border: 1px solid #e5b700;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.stacked-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.stack-item,
+.accordion-item,
+.saved-report-item,
+.vehicle-block,
+.agency-block {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.stack-toggle,
+.accordion-toggle {
+  width: 100%;
+  text-align: left;
+  font-weight: 700;
+  background: #f0f0f0;
+  border: none;
+  border-bottom: 1px solid #ddd;
+}
+
+.stack-content,
+.accordion-panel {
+  display: none;
+  padding: 12px;
+}
+
+.stack-content.open,
+.accordion-panel.open {
+  display: block;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.scene-chip,
+.responder-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.scene-chip button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.responder-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.responder-row {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+}
+
+.responder-row-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.responder-stage {
+  margin-top: 12px;
+}
+
+.stage-label {
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.role-hint,
+.simple-note {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.preview-image {
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.preview-empty {
+  color: #666;
+}
+
+.pager-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 12px 0 16px;
+}
+
+.preview-card {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+}
+
+.preview-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 860px) {
+  .app-header {
+    grid-template-columns: 1fr;
+  }
+
+  .top-nav,
+  .form-grid,
+  .pager-preview-grid,
+  .responder-row-top {
+    grid-template-columns: 1fr;
+  }
+
+  .brigade-logo {
+    height: 56px;
+  }
+}
