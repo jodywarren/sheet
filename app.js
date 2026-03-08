@@ -48,11 +48,9 @@ const CONFIG = {
   OCCUPANTS: ["0", "1", "2", "3", "4+", "Unknown"],
   TRI_STATE: ["Yes", "No", "Unknown"],
   VEHICLE_STABILITY: ["Upright", "On side", "On roof", "Unknown"],
-  RESPONSE_TYPES: ["Appliance", "Direct", "Station"],
-  APPLIANCE_OPTIONS: ["Conn T1", "Conn T2", "Other", "MTD P/T"],
-  APPLIANCE_OPTIONS_CONNEWARRE: ["Conn T1", "Conn T2", "Other"],
-  APPLIANCE_OPTIONS_MTD: ["MTD P/T"],
-  ROLE_OPTIONS: ["Driver", "CL", "Crew"],
+  RESPONSE_DESTINATIONS_CONNEWARRE: ["T1", "T2", "Station", "Direct"],
+  RESPONSE_DESTINATIONS_MTD: ["MTD P/T", "Station", "Direct"],
+  TRUCK_ROLES: ["Driver", "CL"],
 };
 
 const STORAGE_KEYS = {
@@ -398,10 +396,7 @@ function findPagerRectangles(imageBitmap) {
     }
   }
 
-  if (!candidateBands.length) {
-    return [{ x: 0, y: 0, width, height }];
-  }
-
+  if (!candidateBands.length) return [{ x: 0, y: 0, width, height }];
   return candidateBands.slice(0, 5);
 }
 
@@ -424,9 +419,7 @@ function cropPagerRectangle(imageBitmap, rect) {
 }
 
 async function runPagerOCR(canvas) {
-  const result = await Tesseract.recognize(canvas, "eng", {
-    logger: () => {}
-  });
+  const result = await Tesseract.recognize(canvas, "eng", { logger: () => {} });
   return result?.data?.text || "";
 }
 
@@ -484,11 +477,7 @@ function extractLikelyAddress(lines) {
 }
 
 function validatePagerText(parsed) {
-  const hasEvent = !!parsed.eventNumber;
-  const hasBrigade = !!parsed.brigadeCode;
-  const hasIncident = !!parsed.incidentType;
-  const hasAddress = !!parsed.address;
-  return hasEvent && hasBrigade && hasIncident && hasAddress;
+  return !!(parsed.eventNumber && parsed.brigadeCode && parsed.incidentType && parsed.address);
 }
 
 function populateIncidentFields(parsed) {
@@ -505,6 +494,10 @@ function populateIncidentFields(parsed) {
   updateBrigadeRole();
   updateStructureVisibilityByIncidentType();
   evaluateMvaAutoTrigger(parsed.upper || "");
+}
+
+function setOcrStatus(message) {
+  document.getElementById("ocrStatus").textContent = message;
 }
 
 /* =========================================================
@@ -533,15 +526,13 @@ function cleanAddress(address) {
 }
 
 function updateFirsLabel() {
-  const label = document.getElementById("firsLabel");
-  label.textContent = state.incident.firsCode ? "FIRS Code" : "Paste FIRS";
+  document.getElementById("firsLabel").textContent = state.incident.firsCode ? "FIRS Code" : "Paste FIRS";
 }
 
 function evaluateMvaAutoTrigger(text) {
   const hasMatch = CONFIG.MVA_KEYWORDS.some((keyword) => text.includes(keyword));
   if (hasMatch) {
-    const vehicleSection = document.getElementById("vehicleSection");
-    vehicleSection.classList.add("open");
+    document.getElementById("vehicleSection").classList.add("open");
     if (state.vehicles.length === 0) setVehicleCount(1);
   }
 }
@@ -564,21 +555,13 @@ function collectHoseUse() {
   persistDraftState();
 }
 
-function setOcrStatus(message) {
-  document.getElementById("ocrStatus").textContent = message;
-}
-
 /* =========================================================
    6. VEHICLE MODULE
    ========================================================= */
 function setVehicleCount(count) {
   const safeCount = Math.max(0, Math.min(CONFIG.MAX_VEHICLES, count));
-  while (state.vehicles.length < safeCount) {
-    state.vehicles.push(createBlankVehicle(state.vehicles.length + 1));
-  }
-  while (state.vehicles.length > safeCount) {
-    state.vehicles.pop();
-  }
+  while (state.vehicles.length < safeCount) state.vehicles.push(createBlankVehicle(state.vehicles.length + 1));
+  while (state.vehicles.length > safeCount) state.vehicles.pop();
   renderVehicleBlocks();
   persistDraftState();
 }
@@ -703,12 +686,9 @@ function bindVehicleBlockInputs() {
 }
 
 function updateVehicleField(e) {
-  const vehicleId = e.target.dataset.vehicleId;
-  const field = e.target.dataset.field;
-  const vehicle = state.vehicles.find((v) => v.id === vehicleId);
+  const vehicle = state.vehicles.find((v) => v.id === e.target.dataset.vehicleId);
   if (!vehicle) return;
-
-  vehicle[field] = e.target.value;
+  vehicle[e.target.dataset.field] = e.target.value;
 
   const otherMakeWrap = document.querySelector(`[data-other-make-wrap="${vehicle.id}"]`);
   const otherPropulsionWrap = document.querySelector(`[data-other-propulsion-wrap="${vehicle.id}"]`);
@@ -726,27 +706,21 @@ function collectStructureData() {
   state.structure.levels = document.getElementById("structureLevels").value;
   state.structure.occupancy = document.getElementById("structureOccupancy").value;
   state.structure.construction = document.getElementById("structureConstruction").value;
-
   state.structure.fireAreaOrigin = document.getElementById("fireAreaOrigin").value;
   state.structure.fireAreaExtent = document.getElementById("fireAreaExtent").value;
   state.structure.fireAreaComments = document.getElementById("fireAreaComments").value;
-
   state.structure.fireFuelLoad = document.getElementById("fireFuelLoad").value;
   state.structure.fireBehaviour = document.getElementById("fireBehaviour").value;
   state.structure.fireMaterialComments = document.getElementById("fireMaterialComments").value;
-
   state.structure.detectionType = document.getElementById("detectionType").value;
   state.structure.alarmActivated = document.getElementById("alarmActivated").value;
   state.structure.detectionComments = document.getElementById("detectionComments").value;
-
   state.structure.suppressionType = document.getElementById("suppressionType").value;
   state.structure.suppressionWorked = document.getElementById("suppressionWorked").value;
   state.structure.suppressionComments = document.getElementById("suppressionComments").value;
-
   state.structure.portableExtinguisher = document.getElementById("portableExtinguisher").value;
   state.structure.portableOther = document.getElementById("portableOther").value;
   state.structure.portableComments = document.getElementById("portableComments").value;
-
   persistDraftState();
 }
 
@@ -754,7 +728,7 @@ function formatStructureReport() {
   if (!(state.incident.incidentType === "STRU" && state.structure.required)) return "";
 
   const s = state.structure;
-  const lines = [
+  return [
     "Structure Fire",
     lineIfValue("Property Type", s.propertyType),
     lineIfValue("Building Height / Levels", s.levels),
@@ -775,9 +749,7 @@ function formatStructureReport() {
     lineIfValue("Extinguisher Use", s.portableExtinguisher),
     lineIfValue("Portable Other", s.portableOther),
     lineIfValue("Portable Equipment Comments", s.portableComments)
-  ].filter(Boolean);
-
-  return lines.join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 /* =========================================================
@@ -795,51 +767,24 @@ function ensureMinimumResponderRows() {
 }
 
 function createResponder(group) {
-  const defaults = {
-    connewarre: {
-      brigade: "CONN",
-      appliance: "Conn T1",
-      responseType: "Appliance"
-    },
-    mtd: {
-      brigade: "",
-      appliance: "MTD P/T",
-      responseType: "Appliance"
-    },
-    direct: {
-      brigade: "",
-      appliance: "",
-      responseType: "Direct"
-    },
-    station: {
-      brigade: "",
-      appliance: "",
-      responseType: "Station"
-    }
-  };
-
-  const base = defaults[group] || defaults.direct;
-
   return {
     id: cryptoRandomId(),
     group,
-    brigade: base.brigade,
+    brigade: group === "connewarre" ? "CONN" : "",
     name: "",
     phone: "",
-    appliance: base.appliance,
-    role: "",
+    destination: "",
+    truckRole: "",
     ba: false,
     injury: false,
-    oic: false,
-    responseType: base.responseType,
-    notes: ""
+    oic: false
   };
 }
 
 function renderResponders() {
   renderConnewarreResponders();
   renderMtdResponders();
-  renderOtherResponders();
+  renderOtherResponderLists();
   updateHeaderOicStatus();
 }
 
@@ -848,22 +793,15 @@ function renderConnewarreResponders() {
   container.innerHTML = `
     <div class="responder-list-wrap">
       <div id="connewarreList"></div>
-      <button id="addConnewarreResponderBtn" class="secondary-btn compact-add-btn" type="button">Add Member</button>
     </div>
   `;
 
   const list = container.querySelector("#connewarreList");
   state.responders.connewarre.forEach((responder, index) => {
-    list.appendChild(buildResponderRowElement(responder, index, "connewarre"));
+    list.appendChild(buildResponderRow(responder, index));
   });
 
-  container.querySelector("#addConnewarreResponderBtn").addEventListener("click", () => {
-    state.responders.connewarre.push(createResponder("connewarre"));
-    renderResponders();
-    persistDraftState();
-  });
-
-  bindResponderRowEvents(container);
+  bindResponderEvents(container);
 }
 
 function renderMtdResponders() {
@@ -871,287 +809,374 @@ function renderMtdResponders() {
   container.innerHTML = `
     <div class="responder-list-wrap">
       <div id="mtdList"></div>
-      <button id="addMtdResponderBtn" class="secondary-btn compact-add-btn" type="button">Add Member</button>
     </div>
   `;
 
   const list = container.querySelector("#mtdList");
   state.responders.mtd.forEach((responder, index) => {
-    list.appendChild(buildResponderRowElement(responder, index, "mtd"));
+    list.appendChild(buildResponderRow(responder, index));
   });
 
-  container.querySelector("#addMtdResponderBtn").addEventListener("click", () => {
-    state.responders.mtd.push(createResponder("mtd"));
-    renderResponders();
-    persistDraftState();
-  });
-
-  bindResponderRowEvents(container);
+  bindResponderEvents(container);
 }
 
-function renderOtherResponders() {
-  renderSimpleResponderGroup("directRespondersContainer", "direct", "Add Direct Responder");
-  renderSimpleResponderGroup("stationRespondersContainer", "station", "Add Station Responder");
-}
-
-function renderSimpleResponderGroup(containerId, group, buttonLabel) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = `
+function renderOtherResponderLists() {
+  const directContainer = document.getElementById("directRespondersContainer");
+  directContainer.innerHTML = `
     <div class="responder-list-wrap">
-      <div id="${group}List"></div>
-      <button class="secondary-btn compact-add-btn" type="button" data-add-simple="${group}">${buttonLabel}</button>
+      ${state.responders.direct.length
+        ? state.responders.direct.map((r, i) => buildResponderRowHtml(r, i)).join("")
+        : `<div class="simple-note">No direct responders added from this section. Use the responder flow above and select Direct where relevant.</div>`}
     </div>
   `;
 
-  const list = container.querySelector(`#${group}List`);
-  state.responders[group].forEach((responder, index) => {
-    list.appendChild(buildResponderRowElement(responder, index, group));
-  });
-
-  container.querySelector(`[data-add-simple="${group}"]`).addEventListener("click", () => {
-    state.responders[group].push(createResponder(group));
-    renderResponders();
-    persistDraftState();
-  });
-
-  bindResponderRowEvents(container);
+  const stationContainer = document.getElementById("stationRespondersContainer");
+  stationContainer.innerHTML = `
+    <div class="responder-list-wrap">
+      ${state.responders.station.length
+        ? state.responders.station.map((r, i) => buildResponderRowHtml(r, i)).join("")
+        : `<div class="simple-note">No station responders added from this section. Use the responder flow above and select Station where relevant.</div>`}
+    </div>
+  `;
 }
 
-function buildResponderRowElement(responder, index, group) {
-  const row = document.createElement("div");
-  row.className = "responder-row";
-  row.dataset.group = group;
-  row.dataset.responderId = responder.id;
+function buildResponderRow(responder, index) {
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = buildResponderRowHtml(responder, index);
+  return wrapper.firstElementChild;
+}
 
-  const isMtd = group === "mtd";
-  const isOtherGroup = group === "direct" || group === "station";
-  const brigadeOptions = `
-    <option value="">Brigade</option>
-    <option value="CONN" ${responder.brigade === "CONN" ? "selected" : ""}>Connewarre</option>
-    <option value="GROV" ${responder.brigade === "GROV" ? "selected" : ""}>Grovedale</option>
-    <option value="FRES" ${responder.brigade === "FRES" ? "selected" : ""}>Freshwater Creek</option>
-  `;
+function buildResponderRowHtml(responder, index) {
+  const isConn = responder.group === "connewarre";
+  const isMtd = responder.group === "mtd";
+  const nameListId = `member-list-${responder.id}`;
 
-  const applianceOptions = isMtd
-    ? CONFIG.APPLIANCE_OPTIONS_MTD
-    : isOtherGroup
-    ? ["", ...CONFIG.APPLIANCE_OPTIONS]
-    : CONFIG.APPLIANCE_OPTIONS_CONNEWARRE;
+  const datalistHtml = isConn
+    ? getMemberOptionsHtml("CONN", responder.name)
+    : getCombinedMtdMemberOptionsHtml(responder.name);
 
-  const nameListId = `memberList-${responder.id}`;
+  const destinationOptions = isConn
+    ? CONFIG.RESPONSE_DESTINATIONS_CONNEWARRE
+    : CONFIG.RESPONSE_DESTINATIONS_MTD;
 
-  row.innerHTML = `
-    <div class="responder-row-main">
-      ${isMtd || isOtherGroup ? `
-        <div class="responder-row-field brigade-field">
-          <select data-responder-id="${responder.id}" data-field="brigade">
-            ${brigadeOptions}
-          </select>
+  const destinationButtons = responder.name.trim()
+    ? destinationOptions.map((dest) => {
+        const disabled = isDestinationUnavailable(responder, dest);
+        const active = responder.destination === dest;
+        return `
+          <button
+            type="button"
+            class="mini-chip ${active ? "mini-chip-active" : ""}"
+            data-action="destination"
+            data-responder-id="${responder.id}"
+            data-value="${dest}"
+            ${disabled && !active ? "disabled" : ""}
+          >${dest}</button>
+        `;
+      }).join("")
+    : "";
+
+  const showTruckRoleButtons = responder.destination === "T1" || responder.destination === "T2";
+  const truckRoleButtons = showTruckRoleButtons
+    ? CONFIG.TRUCK_ROLES.map((role) => {
+        const disabled = isTruckRoleUnavailable(responder, responder.destination, role);
+        const active = responder.truckRole === role;
+        return `
+          <button
+            type="button"
+            class="mini-chip ${active ? "mini-chip-active" : ""}"
+            data-action="truck-role"
+            data-responder-id="${responder.id}"
+            data-value="${role}"
+            ${disabled && !active ? "disabled" : ""}
+          >${role}</button>
+        `;
+      }).join("")
+    : "";
+
+  const flagButtons = responder.destination
+    ? `
+      <button type="button" class="mini-chip ${responder.ba ? "mini-chip-active" : ""}" data-action="toggle-flag" data-flag="ba" data-responder-id="${responder.id}">BA</button>
+      <button type="button" class="mini-chip ${responder.injury ? "mini-chip-active" : ""}" data-action="toggle-flag" data-flag="injury" data-responder-id="${responder.id}">Injured</button>
+      <button type="button" class="mini-chip ${responder.oic ? "mini-chip-active" : ""}" data-action="toggle-flag" data-flag="oic" data-responder-id="${responder.id}">OIC</button>
+    `
+    : "";
+
+  const brigadeBadge = isMtd && responder.brigade
+    ? `<div class="responder-badge">${formatBrigadeName(responder.brigade)}</div>`
+    : "";
+
+  const addMemberButton = shouldShowAddMemberButton(responder, index)
+    ? `<button type="button" class="secondary-btn compact-add-btn" data-action="add-member" data-group="${responder.group}">Add Member</button>`
+    : "";
+
+  const removeButton = index > 0
+    ? `<button type="button" class="tiny-btn responder-remove-btn" data-action="remove-member" data-group="${responder.group}" data-responder-id="${responder.id}">Remove</button>`
+    : `<div class="responder-remove-placeholder"></div>`;
+
+  return `
+    <div class="responder-row" data-responder-id="${responder.id}">
+      <div class="responder-row-top">
+        <div class="responder-name-wrap">
+          <input
+            type="text"
+            list="${nameListId}"
+            placeholder="Name"
+            data-action="name-input"
+            data-responder-id="${responder.id}"
+            value="${escapeHtml(responder.name)}"
+          />
+          <datalist id="${nameListId}">
+            ${datalistHtml}
+          </datalist>
+        </div>
+        ${brigadeBadge}
+        ${removeButton}
+      </div>
+
+      ${responder.name.trim() ? `
+        <div class="responder-stage">
+          <div class="stage-label">Response</div>
+          <div class="chip-row">${destinationButtons}</div>
         </div>
       ` : ""}
 
-      <div class="responder-row-field name-field">
-        <input
-          type="text"
-          list="${nameListId}"
-          placeholder="Name"
-          data-responder-id="${responder.id}"
-          data-field="name"
-          value="${escapeHtml(responder.name)}"
-        />
-        <datalist id="${nameListId}">
-          ${getMemberOptionsHtml(responder.brigade || "CONN", responder.name)}
-        </datalist>
-      </div>
+      ${showTruckRoleButtons ? `
+        <div class="responder-stage">
+          <div class="stage-label">Truck role</div>
+          <div class="chip-row">
+            ${truckRoleButtons}
+            <div class="role-hint">Leave blank = Crew</div>
+          </div>
+        </div>
+      ` : ""}
 
-      <div class="responder-row-field appliance-field">
-        <select data-responder-id="${responder.id}" data-field="appliance">
-          ${applianceOptions.map((option) => {
-            const label = option || "Appliance";
-            return `<option value="${option}" ${responder.appliance === option ? "selected" : ""}>${label}</option>`;
-          }).join("")}
-        </select>
-      </div>
+      ${flagButtons ? `
+        <div class="responder-stage">
+          <div class="stage-label">Flags</div>
+          <div class="chip-row">${flagButtons}</div>
+        </div>
+      ` : ""}
 
-      <div class="responder-row-field role-field">
-        <select data-responder-id="${responder.id}" data-field="role">
-          <option value="">Role</option>
-          ${CONFIG.ROLE_OPTIONS.map((role) => `<option value="${role}" ${responder.role === role ? "selected" : ""}>${role}</option>`).join("")}
-        </select>
-      </div>
-
-      <div class="responder-flags-compact">
-        <label class="tick-chip">
-          <input type="checkbox" data-responder-id="${responder.id}" data-flag="ba" ${responder.ba ? "checked" : ""} />
-          <span>BA</span>
-        </label>
-
-        <label class="tick-chip">
-          <input type="checkbox" data-responder-id="${responder.id}" data-flag="injury" ${responder.injury ? "checked" : ""} />
-          <span>Inj</span>
-        </label>
-
-        <label class="tick-chip ${responder.oic ? "tick-chip-active" : ""}">
-          <input type="checkbox" data-responder-id="${responder.id}" data-flag="oic" ${responder.oic ? "checked" : ""} />
-          <span>OIC</span>
-        </label>
-      </div>
-
-      ${index > 0 || isOtherGroup ? `
-        <button class="tiny-btn responder-remove-btn" type="button" data-remove-responder="${responder.id}" data-group="${group}">Remove</button>
-      ` : `
-        <div class="responder-remove-placeholder"></div>
-      `}
+      ${addMemberButton}
     </div>
-
-    <input
-      type="hidden"
-      data-responder-id="${responder.id}"
-      data-field="phone"
-      value="${escapeHtml(responder.phone)}"
-    />
   `;
-
-  return row;
 }
 
-function bindResponderRowEvents(container) {
-  container.querySelectorAll("[data-responder-id][data-field]").forEach((el) => {
-    el.addEventListener("input", handleResponderFieldChange);
-    el.addEventListener("change", handleResponderFieldChange);
+function bindResponderEvents(container) {
+  container.querySelectorAll('[data-action="name-input"]').forEach((input) => {
+    input.addEventListener("input", handleResponderNameInput);
+    input.addEventListener("change", handleResponderNameInput);
   });
 
-  container.querySelectorAll("[data-responder-id][data-flag]").forEach((el) => {
-    el.addEventListener("change", handleResponderFlagChange);
+  container.querySelectorAll('[data-action="destination"]').forEach((btn) => {
+    btn.addEventListener("click", handleDestinationSelect);
   });
 
-  container.querySelectorAll("[data-remove-responder]").forEach((btn) => {
-    btn.addEventListener("click", handleRemoveResponder);
+  container.querySelectorAll('[data-action="truck-role"]').forEach((btn) => {
+    btn.addEventListener("click", handleTruckRoleSelect);
+  });
+
+  container.querySelectorAll('[data-action="toggle-flag"]').forEach((btn) => {
+    btn.addEventListener("click", handleResponderFlagToggle);
+  });
+
+  container.querySelectorAll('[data-action="add-member"]').forEach((btn) => {
+    btn.addEventListener("click", handleAddMember);
+  });
+
+  container.querySelectorAll('[data-action="remove-member"]').forEach((btn) => {
+    btn.addEventListener("click", handleRemoveMember);
   });
 }
 
-function handleResponderFieldChange(e) {
+function handleResponderNameInput(e) {
   const responder = findResponderById(e.target.dataset.responderId);
   if (!responder) return;
 
-  const field = e.target.dataset.field;
-  responder[field] = e.target.value;
+  responder.name = e.target.value.trim();
 
-  const row = e.target.closest(".responder-row");
-
-  if (field === "brigade") {
-    const datalist = row.querySelector("datalist");
-    if (datalist) {
-      datalist.innerHTML = getMemberOptionsHtml(responder.brigade, responder.name);
-    }
-
-    const matchedPhone = getMemberPhone(responder.brigade, responder.name);
-    responder.phone = matchedPhone || responder.phone || "";
-    syncHiddenPhoneField(row, responder.phone);
+  if (responder.group === "connewarre") {
+    responder.brigade = "CONN";
+    responder.phone = getMemberPhone("CONN", responder.name) || "";
   }
 
-  if (field === "name") {
-    const matchedPhone = getMemberPhone(responder.brigade || defaultBrigadeForResponder(responder), responder.name);
-    responder.phone = matchedPhone || "";
-    syncHiddenPhoneField(row, responder.phone);
+  if (responder.group === "mtd") {
+    const inferred = inferMtdMemberRecord(responder.name);
+    responder.brigade = inferred?.brigade || "";
+    responder.phone = inferred?.phone || "";
   }
 
-  if (field === "appliance" && !responder.appliance && responder.group === "mtd") {
-    responder.appliance = "MTD P/T";
-  }
-
-  if (responder.oic) {
-    state.ui.oicResponderId = responder.id;
-    state.ui.oicName = responder.name || "";
-    state.ui.oicPhone = responder.phone || "";
-  }
-
-  updateHeaderOicStatus();
   persistDraftState();
+  renderResponders();
 }
 
-function handleResponderFlagChange(e) {
+function handleDestinationSelect(e) {
+  const responder = findResponderById(e.target.dataset.responderId);
+  if (!responder) return;
+
+  const selected = e.target.dataset.value;
+  if (isDestinationUnavailable(responder, selected)) return;
+
+  const previous = responder.destination;
+  responder.destination = selected;
+
+  if (!(selected === "T1" || selected === "T2")) {
+    responder.truckRole = "";
+  }
+
+  moveResponderToCorrectList(responder, previous, selected);
+
+  persistDraftState();
+  renderResponders();
+}
+
+function handleTruckRoleSelect(e) {
+  const responder = findResponderById(e.target.dataset.responderId);
+  if (!responder) return;
+
+  const role = e.target.dataset.value;
+  if (!(responder.destination === "T1" || responder.destination === "T2")) return;
+  if (isTruckRoleUnavailable(responder, responder.destination, role)) return;
+
+  responder.truckRole = responder.truckRole === role ? "" : role;
+
+  persistDraftState();
+  renderResponders();
+}
+
+function handleResponderFlagToggle(e) {
   const responder = findResponderById(e.target.dataset.responderId);
   if (!responder) return;
 
   const flag = e.target.dataset.flag;
-  const checked = e.target.checked;
-
-  if (flag === "oic" && checked) {
-    clearExistingOic();
-  }
-
-  responder[flag] = checked;
 
   if (flag === "oic") {
-    if (checked) {
+    if (!responder.oic) {
+      clearExistingOic();
+      responder.oic = true;
       if (!responder.phone) {
-        responder.phone = getMemberPhone(responder.brigade || defaultBrigadeForResponder(responder), responder.name) || "";
-        const row = e.target.closest(".responder-row");
-        syncHiddenPhoneField(row, responder.phone);
+        responder.phone = getResponderPhoneFallback(responder);
       }
-      state.ui.oicResponderId = responder.id;
-      state.ui.oicName = responder.name || "";
-      state.ui.oicPhone = responder.phone || "";
     } else {
-      state.ui.oicResponderId = "";
-      state.ui.oicName = "";
-      state.ui.oicPhone = "";
+      responder.oic = false;
     }
+  } else {
+    responder[flag] = !responder[flag];
   }
 
-  renderResponders();
   persistDraftState();
+  renderResponders();
 }
 
-function handleRemoveResponder(e) {
-  const { removeResponder, group } = e.target.dataset;
-  state.responders[group] = state.responders[group].filter((r) => r.id !== removeResponder);
+function handleAddMember(e) {
+  const group = e.target.dataset.group;
+  state.responders[group].push(createResponder(group));
+  persistDraftState();
+  renderResponders();
+}
 
-  if ((group === "connewarre" || group === "mtd") && state.responders[group].length === 0) {
+function handleRemoveMember(e) {
+  const group = e.target.dataset.group;
+  const responderId = e.target.dataset.responderId;
+  state.responders[group] = state.responders[group].filter((r) => r.id !== responderId);
+
+  if ((group === "connewarre" || group === "mtd") && !state.responders[group].length) {
     state.responders[group].push(createResponder(group));
   }
 
-  renderResponders();
   persistDraftState();
+  renderResponders();
 }
 
-function syncHiddenPhoneField(row, phone) {
-  if (!row) return;
-  const hidden = row.querySelector('[data-field="phone"]');
-  if (hidden) hidden.value = phone || "";
+function shouldShowAddMemberButton(responder, index) {
+  const list = state.responders[responder.group];
+  const isLast = index === list.length - 1;
+  return isLast && responder.name.trim() && responder.destination;
+}
+
+function moveResponderToCorrectList(responder, previousDestination, newDestination) {
+  const sourceGroup = responder.group;
+
+  if (sourceGroup === "connewarre" || sourceGroup === "mtd") {
+    if (newDestination === "Direct") {
+      state.responders[sourceGroup] = state.responders[sourceGroup].filter((r) => r.id !== responder.id);
+      responder.group = "direct";
+      state.responders.direct.push(responder);
+      ensureMinimumResponderRows();
+      return;
+    }
+
+    if (newDestination === "Station") {
+      state.responders[sourceGroup] = state.responders[sourceGroup].filter((r) => r.id !== responder.id);
+      responder.group = "station";
+      state.responders.station.push(responder);
+      ensureMinimumResponderRows();
+      return;
+    }
+  }
+
+  if (sourceGroup === "direct" || sourceGroup === "station") {
+    if (responder.brigade === "CONN" && (newDestination === "T1" || newDestination === "T2")) {
+      state.responders[sourceGroup] = state.responders[sourceGroup].filter((r) => r.id !== responder.id);
+      responder.group = "connewarre";
+      state.responders.connewarre.push(responder);
+      ensureMinimumResponderRows();
+      return;
+    }
+
+    if ((responder.brigade === "CONN" || responder.brigade === "GROV" || responder.brigade === "FRES") && newDestination === "MTD P/T") {
+      state.responders[sourceGroup] = state.responders[sourceGroup].filter((r) => r.id !== responder.id);
+      responder.group = "mtd";
+      state.responders.mtd.push(responder);
+      ensureMinimumResponderRows();
+      return;
+    }
+  }
+
+  if (!newDestination || newDestination === previousDestination) return;
+}
+
+function isDestinationUnavailable(responder, destination) {
+  if (responder.group === "connewarre" && destination === "MTD P/T") return true;
+  if (responder.group === "mtd" && (destination === "T1" || destination === "T2")) return true;
+  return false;
+}
+
+function isTruckRoleUnavailable(responder, truck, role) {
+  return getAllResponders().some((r) =>
+    r.id !== responder.id &&
+    r.destination === truck &&
+    r.truckRole === role
+  );
 }
 
 function clearExistingOic() {
-  getAllResponders().forEach((responder) => {
-    responder.oic = false;
+  getAllResponders().forEach((r) => {
+    r.oic = false;
   });
 }
 
 function updateHeaderOicStatus() {
-  const oic = getAllResponders().find((r) => r.oic);
   const el = document.getElementById("oicStatus");
+  const oic = getAllResponders().find((r) => r.oic && r.name.trim());
 
-  if (!oic || !oic.name) {
+  if (!oic) {
     el.textContent = "APPOINT OIC";
     el.classList.add("oic-missing");
+    state.ui.oicResponderId = "";
+    state.ui.oicName = "";
+    state.ui.oicPhone = "";
     return;
   }
 
-  if (!oic.phone) {
-    oic.phone = getMemberPhone(oic.brigade || defaultBrigadeForResponder(oic), oic.name) || "";
-  }
+  oic.phone = oic.phone || getResponderPhoneFallback(oic) || "";
 
   state.ui.oicResponderId = oic.id;
   state.ui.oicName = oic.name;
-  state.ui.oicPhone = oic.phone || "";
+  state.ui.oicPhone = oic.phone;
   el.textContent = `OIC: ${oic.name}${oic.phone ? " – " + oic.phone : ""}`;
   el.classList.remove("oic-missing");
-}
-
-function defaultBrigadeForResponder(responder) {
-  if (responder.group === "connewarre") return "CONN";
-  return responder.brigade || "";
 }
 
 function getAllResponders() {
@@ -1167,6 +1192,20 @@ function findResponderById(id) {
   return getAllResponders().find((r) => r.id === id);
 }
 
+function getResponderPhoneFallback(responder) {
+  if (responder.group === "connewarre" || responder.brigade === "CONN") {
+    return getMemberPhone("CONN", responder.name) || responder.phone || "";
+  }
+  if (responder.group === "mtd") {
+    const inferred = inferMtdMemberRecord(responder.name);
+    return inferred?.phone || responder.phone || "";
+  }
+  if (responder.brigade) {
+    return getMemberPhone(responder.brigade, responder.name) || responder.phone || "";
+  }
+  return responder.phone || "";
+}
+
 function getMemberOptionsHtml(brigadeKey, currentValue = "") {
   const options = (state.memberLists[brigadeKey] || []).map((member) => {
     const name = typeof member === "string" ? member : (member.name || "");
@@ -1178,6 +1217,52 @@ function getMemberOptionsHtml(brigadeKey, currentValue = "") {
   }
 
   return options.join("");
+}
+
+function getCombinedMtdMemberOptionsHtml(currentValue = "") {
+  const all = [
+    ...((state.memberLists.CONN || []).map((m) => ({ ...m, brigade: "CONN" }))),
+    ...((state.memberLists.GROV || []).map((m) => ({ ...m, brigade: "GROV" }))),
+    ...((state.memberLists.FRES || []).map((m) => ({ ...m, brigade: "FRES" })))
+  ];
+
+  const names = all.map((member) => {
+    const name = typeof member === "string" ? member : member.name || "";
+    return `<option value="${escapeHtml(name)}"></option>`;
+  });
+
+  if (currentValue && !names.some((opt) => opt.includes(`value="${escapeHtml(currentValue)}"`))) {
+    names.unshift(`<option value="${escapeHtml(currentValue)}"></option>`);
+  }
+
+  return [...new Set(names)].join("");
+}
+
+function inferMtdMemberRecord(memberName) {
+  const name = (memberName || "").trim().toUpperCase();
+  if (!name) return null;
+
+  const sources = [
+    { brigade: "CONN", list: state.memberLists.CONN || [] },
+    { brigade: "GROV", list: state.memberLists.GROV || [] },
+    { brigade: "FRES", list: state.memberLists.FRES || [] }
+  ];
+
+  for (const source of sources) {
+    const found = source.list.find((member) => {
+      const memberNameValue = typeof member === "string" ? member : member.name || "";
+      return memberNameValue.trim().toUpperCase() === name;
+    });
+
+    if (found) {
+      return {
+        brigade: source.brigade,
+        phone: typeof found === "string" ? "" : (found.phone || "")
+      };
+    }
+  }
+
+  return null;
 }
 
 /* =========================================================
@@ -1385,13 +1470,8 @@ function renderSavedReports() {
 /* =========================================================
    11. VALIDATION MODULE
    ========================================================= */
-function validateIncident() {
-  return true;
-}
-
 function validateResponders() {
-  const responders = getAllResponders().filter((r) => r.name.trim());
-  return responders.length > 0;
+  return getAllResponders().some((r) => r.name.trim());
 }
 
 function validateReportReady() {
@@ -1464,36 +1544,43 @@ function buildOicSection() {
 
 function buildApplianceSections() {
   const grouped = {};
+
   getAllResponders()
-    .filter((r) => r.name.trim() && r.appliance)
-    .forEach((responder) => {
-      if (!grouped[responder.appliance]) grouped[responder.appliance] = [];
-      grouped[responder.appliance].push(responder);
+    .filter((r) => r.name.trim() && (r.destination === "T1" || r.destination === "T2" || r.destination === "MTD P/T"))
+    .forEach((r) => {
+      const key = r.destination;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(r);
     });
 
-  const applianceNames = Object.keys(grouped);
-  if (!applianceNames.length) return "";
+  const order = ["T1", "T2", "MTD P/T"];
+  const sections = [];
 
-  const lines = ["Appliances"];
-  applianceNames.forEach((appliance) => {
-    lines.push(appliance);
-    grouped[appliance].forEach((r) => {
-      const role = r.role ? ` | ${r.role}` : "";
-      lines.push(`- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}${role}`);
+  order.forEach((key) => {
+    if (!grouped[key]?.length) return;
+    const title = key === "T1" ? "Conn T1" : key === "T2" ? "Conn T2" : "MTD P/T";
+    const lines = [title];
+
+    grouped[key].forEach((r) => {
+      const role = r.truckRole || "Crew";
+      lines.push(`- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)} | ${role}`);
     });
+
+    sections.push(lines.join("\n"));
   });
 
-  return lines.join("\n");
+  if (!sections.length) return "";
+  return ["Appliances", ...sections].join("\n");
 }
 
 function buildResponderSections() {
-  const directLines = state.responders.direct
-    .filter((r) => r.name.trim())
-    .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}${r.role ? " | " + r.role : ""}`);
+  const directLines = getAllResponders()
+    .filter((r) => r.name.trim() && r.destination === "Direct")
+    .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}`);
 
-  const stationLines = state.responders.station
-    .filter((r) => r.name.trim())
-    .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}${r.role ? " | " + r.role : ""}`);
+  const stationLines = getAllResponders()
+    .filter((r) => r.name.trim() && r.destination === "Station")
+    .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}`);
 
   const sections = [];
   if (directLines.length) sections.push(["Direct Responders", ...directLines].join("\n"));
@@ -1529,9 +1616,7 @@ function buildVehicleSection() {
 
 function buildFirstAgencySection() {
   if (!state.incident.firstAgency) return "";
-  const name = state.incident.firstAgency === "Other"
-    ? state.incident.firstAgencyOther
-    : state.incident.firstAgency;
+  const name = state.incident.firstAgency === "Other" ? state.incident.firstAgencyOther : state.incident.firstAgency;
   if (!name) return "";
   return ["First Agency On Scene", name].join("\n");
 }
@@ -1539,10 +1624,7 @@ function buildFirstAgencySection() {
 function buildHoseSection() {
   const used = Object.entries(state.hoseUse).filter(([, qty]) => Number(qty) > 0);
   if (!used.length) return "";
-  return [
-    "Hose Use",
-    ...used.map(([type, qty]) => `${type}: ${qty}`)
-  ].join("\n");
+  return ["Hose Use", ...used.map(([type, qty]) => `${type}: ${qty}`)].join("\n");
 }
 
 function buildNotesSection() {
@@ -1555,7 +1637,6 @@ function buildIncidentFlagsSection() {
   if (state.incident.flags.membersBefore) flags.push("Members before 1st appliance");
   if (state.incident.flags.aarRequired) flags.push("AAR required");
   if (state.incident.flags.hotDebrief) flags.push("Hot debrief conducted");
-
   if (!flags.length) return "";
   return ["Incident Flags", ...flags.map((f) => `- ${f}`)].join("\n");
 }
@@ -1646,13 +1727,11 @@ function showPage(pageId) {
 }
 
 function toggleSection(targetId) {
-  const target = document.getElementById(targetId);
-  target.classList.toggle("open");
+  document.getElementById(targetId).classList.toggle("open");
 }
 
 function toggleAccordion(targetId) {
-  const panel = document.getElementById(targetId);
-  panel.classList.toggle("open");
+  document.getElementById(targetId).classList.toggle("open");
 }
 
 function updateQuietHoursWarning() {
@@ -1730,12 +1809,7 @@ function restoreDraftState() {
     const parsed = JSON.parse(raw);
 
     if (parsed.incident) state.incident = { ...state.incident, ...parsed.incident };
-    if (parsed.responders) {
-      state.responders = {
-        ...state.responders,
-        ...parsed.responders
-      };
-    }
+    if (parsed.responders) state.responders = { ...state.responders, ...parsed.responders };
     if (parsed.vehicles) state.vehicles = parsed.vehicles;
     if (parsed.agencies) state.agencies = parsed.agencies;
     if (parsed.structure) state.structure = { ...state.structure, ...parsed.structure };
@@ -1771,15 +1845,17 @@ function formatDateForReport(value) {
 }
 
 function appendBrigadeIfNeeded(responder) {
-  const brigadeName = responder.brigade === "GROV"
-    ? "Grovedale"
-    : responder.brigade === "FRES"
-    ? "Freshwater Creek"
-    : "Connewarre";
-
+  const brigadeName = formatBrigadeName(responder.brigade || "CONN");
   return responder.brigade && responder.brigade !== "CONN"
     ? `${responder.name} (${brigadeName})`
     : responder.name;
+}
+
+function formatBrigadeName(brigadeKey) {
+  if (brigadeKey === "CONN") return "Connewarre";
+  if (brigadeKey === "GROV") return "Grovedale";
+  if (brigadeKey === "FRES") return "Freshwater Creek";
+  return brigadeKey || "";
 }
 
 function getMemberRecord(brigadeKey, memberName) {
