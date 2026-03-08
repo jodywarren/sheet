@@ -140,23 +140,16 @@ function ensureRows() {
   if (!state.responders.connewarre.length) state.responders.connewarre.push(createResponder("connewarre"));
   if (!state.responders.mtd.length) state.responders.mtd.push(createResponder("mtd"));
 }
+
 function getAllResponders() {
   return [...state.responders.connewarre, ...state.responders.mtd];
-}
-
-function getResponder(groupKey, responderId) {
-  return state.responders[groupKey].find((r) => r.id === responderId) || null;
 }
 
 function resolveResponderMemberDetails(groupKey, person) {
   const enteredName = String(person.name || "").trim().toUpperCase();
 
   if (!enteredName) {
-    if (groupKey === "connewarre") {
-      person.brigade = "CONN";
-    } else {
-      person.brigade = "";
-    }
+    person.brigade = groupKey === "connewarre" ? "CONN" : "";
     person.phone = "";
     return;
   }
@@ -195,6 +188,7 @@ function updateOicBanner() {
   el("oicBanner").textContent = `OIC: ${oic.name}${oic.phone ? " – " + oic.phone : ""}`;
   el("oicBanner").classList.remove("missing");
 }
+
 function bindStaticEvents() {
   document.querySelectorAll(".tab-btn[data-page]").forEach((btn) => {
     btn.addEventListener("click", () => showPage(btn.dataset.page));
@@ -396,6 +390,8 @@ function renderResponderGroup(groupKey, containerId, destinations) {
   state.responders[groupKey].forEach((person, index) => {
     const card = document.createElement("div");
     card.className = "responder-card";
+    card.dataset.id = person.id;
+    card.dataset.group = groupKey;
 
     const listId = `list_${groupKey}_${person.id}`;
     const options = groupKey === "connewarre"
@@ -442,16 +438,9 @@ function renderResponderGroup(groupKey, containerId, destinations) {
     const nameInput = card.querySelector("input");
     nameInput.addEventListener("input", (e) => {
       person.name = e.target.value;
-      if (groupKey === "connewarre") {
-        person.brigade = "CONN";
-        const found = state.memberLists.CONN.find((m) => (typeof m === "string" ? m : m.name).toUpperCase() === person.name.toUpperCase());
-        person.phone = found && typeof found !== "string" ? found.phone || "" : "";
-      } else {
-        const found = findMemberAcrossBrigades(person.name);
-        person.brigade = found?.brigade || "";
-        person.phone = found?.phone || "";
-      }
-      renderResponders();
+      resolveResponderMemberDetails(groupKey, person);
+      updateResponderCardDisplay(card, person, groupKey);
+      updateOicBanner();
     });
 
     card.querySelector(".tiny-btn").addEventListener("click", () => {
@@ -505,11 +494,21 @@ function renderResponderGroup(groupKey, containerId, destinations) {
         btn.type = "button";
         btn.className = `chip-btn ${person[key] ? "active" : ""}`;
         btn.textContent = label;
+
         btn.addEventListener("click", () => {
-          if (key === "oic") clearAllOic();
-          person[key] = key === "oic" ? !person[key] : !person[key];
-          renderResponders();
+          if (key === "oic") {
+            const willBeOic = !person.oic;
+            clearAllOic();
+            person.oic = willBeOic;
+            renderResponders();
+            return;
+          }
+
+          person[key] = !person[key];
+          btn.classList.toggle("active", person[key]);
+          updateOicBanner();
         });
+
         flagsWrap.appendChild(btn);
       });
     }
