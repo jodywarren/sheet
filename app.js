@@ -535,6 +535,30 @@ function bindSceneBrigadeEvents() {
   }
 }
 
+function collectStructureData() {
+  state.structure.propertyType = el("structurePropertyType")?.value || "";
+  state.structure.levels = el("structureLevels")?.value || "";
+  state.structure.occupancy = el("structureOccupancy")?.value || "";
+  state.structure.construction = el("structureConstruction")?.value || "";
+  state.structure.fireAreaOrigin = el("fireAreaOrigin")?.value || "";
+  state.structure.fireAreaExtent = el("fireAreaExtent")?.value || "";
+  state.structure.fireAreaComments = el("fireAreaComments")?.value || "";
+  state.structure.fireFuelLoad = el("fireFuelLoad")?.value || "";
+  state.structure.fireBehaviour = el("fireBehaviour")?.value || "";
+  state.structure.fireMaterialComments = el("fireMaterialComments")?.value || "";
+  state.structure.detectionType = el("detectionType")?.value || "";
+  state.structure.alarmActivated = el("alarmActivated")?.value || "";
+  state.structure.detectionComments = el("detectionComments")?.value || "";
+  state.structure.suppressionType = el("suppressionType")?.value || "";
+  state.structure.suppressionWorked = el("suppressionWorked")?.value || "";
+  state.structure.suppressionComments = el("suppressionComments")?.value || "";
+  state.structure.portableExtinguisher = el("portableExtinguisher")?.value || "";
+  state.structure.portableOther = el("portableOther")?.value || "";
+  state.structure.portableComments = el("portableComments")?.value || "";
+
+  persistDraft();
+}
+
 function bindStructureEvents() {
   document.querySelectorAll('input[name="structureRequired"]').forEach((radio) => {
     radio.addEventListener("change", () => {
