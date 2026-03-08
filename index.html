@@ -4,81 +4,59 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#b00020" />
-  <meta name="description" content="CFA Digital Turnout Sheet" />
+  <meta name="description" content="CFA Turnout Sheet" />
   <title>Turnout Sheet</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="connewarre-logo.png" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <div class="app">
     <header class="app-header">
-      <div class="header-left">
-        <div class="title-wrap">
-          <div>
-            <h1>TURNOUT SHEET</h1>
-            <p class="subtitle">Created by Jody Tuuta © 2026</p>
-          </div>
-        </div>
+      <div>
+        <h1>TURNOUT SHEET</h1>
+        <p>Created by Jody Tuuta © 2026</p>
       </div>
-
-      <div class="header-center">
-        <div id="oicStatus" class="oic-status oic-missing">APPOINT OIC</div>
-      </div>
-
-      <div class="header-right">
-        <img src="connewarre-logo.png" alt="Connewarre logo" class="brigade-logo" />
-      </div>
+      <div id="oicBanner" class="oic-banner missing">APPOINT OIC</div>
+      <img src="connewarre-logo.png" alt="Connewarre logo" class="logo" />
     </header>
 
     <nav class="top-nav">
-      <button class="nav-btn active" data-page="incidentPage">Incident</button>
-      <button class="nav-btn" data-page="respondersPage">Responders</button>
-      <button class="nav-btn" data-page="sendPage">Send Report</button>
-      <button class="nav-btn settings-btn" id="settingsBtn" aria-label="Profile and Settings">⚙</button>
+      <button class="tab-btn active" data-page="incidentPage">Incident</button>
+      <button class="tab-btn" data-page="respondersPage">Responders</button>
+      <button class="tab-btn" data-page="sendPage">Send Report</button>
+      <button class="tab-btn" id="openSettingsBtn">⚙</button>
     </nav>
 
-    <main class="main-content">
+    <main class="main">
       <section id="incidentPage" class="page active">
-        <div class="page-card">
+        <div class="card">
           <h2>Incident</h2>
 
-          <div class="upload-row">
-            <label class="upload-label">
+          <div class="row">
+            <label class="grow">
               Upload Pager Screenshot
               <input type="file" id="pagerUpload" accept="image/*" />
             </label>
-            <button id="runOcrBtn" class="secondary-btn" type="button">Scan</button>
+            <button id="scanBtn" class="secondary-btn" type="button">Scan</button>
           </div>
 
-          <div id="ocrStatus" class="status-text"></div>
+          <div id="scanStatus" class="help-text">Image preview only in this rebuild.</div>
 
-          <div class="form-grid">
-            <label>
-              Event Number
-              <input type="text" id="eventNumber" placeholder="F#########" />
-            </label>
+          <div class="preview-grid">
+            <div class="preview-card">
+              <strong>Uploaded Screenshot</strong>
+              <img id="pagerPreview" class="preview-img hidden" alt="Pager preview" />
+              <div id="pagerPreviewEmpty" class="help-text">No screenshot loaded</div>
+            </div>
+          </div>
 
-            <label>
-              Pager Date
-              <input type="date" id="pagerDate" />
-            </label>
-
-            <label>
-              Pager Time
-              <input type="time" id="pagerTime" />
-            </label>
-
-            <label>
-              Brigade Code
-              <input type="text" id="brigadeCode" placeholder="CONN1" />
-            </label>
-
-            <label>
-              Primary / Support
-              <input type="text" id="brigadeRole" readonly />
-            </label>
-
+          <div class="grid">
+            <label>Event Number<input id="eventNumber" type="text" /></label>
+            <label>Pager Date<input id="pagerDate" type="date" /></label>
+            <label>Pager Time<input id="pagerTime" type="time" /></label>
+            <label>Brigade Code<input id="brigadeCode" type="text" placeholder="CONN1" /></label>
+            <label>Primary / Support<input id="brigadeRole" type="text" readonly /></label>
             <label>
               Incident Type / Class
               <select id="incidentType">
@@ -90,7 +68,6 @@
                 <option value="G&SC">G&SC</option>
               </select>
             </label>
-
             <label>
               Code Level
               <select id="codeLevel">
@@ -99,334 +76,163 @@
                 <option value="C3">C3</option>
               </select>
             </label>
-
-            <label class="full-width">
-              Address
-              <textarea id="address" rows="2" placeholder="123 MAIN RD&#10;ARMSTRONG CREEK"></textarea>
-            </label>
-
+            <label class="full">Address<textarea id="address" rows="2"></textarea></label>
             <label>
-              <span id="firsLabel">Paste FIRS</span>
-              <div class="inline-field">
-                <input type="text" id="firsCode" placeholder="Paste FIRS" />
+              FIRS Code
+              <div class="inline">
+                <input id="firsCode" type="text" />
                 <button id="resetFirsBtn" class="tiny-btn" type="button">Reset</button>
               </div>
             </label>
+          </div>
 
-            <div class="full-width brigade-scene-block">
-              <label>Brigades on Scene</label>
-              <div class="scene-brigades-toolbar">
-                <select id="brigadeOnSceneSelect">
-                  <option value="">Select brigade</option>
-                  <option value="CONN">CONN</option>
-                  <option value="GROV">GROV</option>
-                  <option value="FRES">FRES</option>
-                  <option value="P64">P64</option>
-                  <option value="P32">P32</option>
-                  <option value="P31">P31</option>
-                  <option value="P33">P33</option>
-                  <option value="P35">P35</option>
-                  <option value="P41">P41</option>
-                  <option value="Other">Other</option>
-                </select>
-                <input type="text" id="brigadeOnSceneOther" class="hidden" placeholder="Enter brigade code" />
-                <button id="addBrigadeOnSceneBtn" class="secondary-btn" type="button">Add Brigade</button>
-              </div>
-              <div id="brigadesOnSceneChips" class="chip-row chip-row-spaced"></div>
+          <div class="section">
+            <h3>Brigades on Scene</h3>
+            <div class="row">
+              <select id="sceneBrigadeSelect">
+                <option value="">Select brigade</option>
+                <option value="CONN">CONN</option>
+                <option value="GROV">GROV</option>
+                <option value="FRES">FRES</option>
+                <option value="P64">P64</option>
+                <option value="P32">P32</option>
+                <option value="P31">P31</option>
+                <option value="P33">P33</option>
+                <option value="P35">P35</option>
+                <option value="P41">P41</option>
+                <option value="Other">Other</option>
+              </select>
+              <input id="sceneBrigadeOther" class="hidden" type="text" placeholder="Other brigade" />
+              <button id="addSceneBrigadeBtn" class="secondary-btn" type="button">Add Brigade</button>
+            </div>
+            <div id="sceneBrigadeChips" class="chips"></div>
+          </div>
+
+          <div class="section">
+            <h3>First Agency On Scene</h3>
+            <div class="row">
+              <select id="firstAgency">
+                <option value="">Choose first agency</option>
+                <option value="CFA">CFA</option>
+                <option value="FRV">FRV</option>
+                <option value="Police">Police</option>
+                <option value="Ambulance">Ambulance</option>
+                <option value="SES">SES</option>
+                <option value="PowerCor">PowerCor</option>
+                <option value="Gas">Gas</option>
+                <option value="Other">Other</option>
+              </select>
+              <input id="firstAgencyOther" class="hidden" type="text" placeholder="Other agency" />
             </div>
           </div>
 
-          <div class="stacked-sections">
-            <div class="stack-item">
-              <button class="stack-toggle" data-target="vehicleSection">Vehicle Incident (MVA)</button>
-              <div id="vehicleSection" class="stack-content">
-                <div class="vehicle-header-row">
-                  <label>
-                    Number of vehicles
-                    <select id="vehicleCount">
-                      <option value="0">0</option>
-                      <option value="1">1</option>
-                      <option value="2">2</option>
-                      <option value="3">3</option>
-                      <option value="4">4</option>
-                      <option value="5">5</option>
-                    </select>
-                  </label>
-                </div>
-                <div id="vehicleBlocks"></div>
-              </div>
+          <div class="section">
+            <h3>Add Agency</h3>
+            <div class="row">
+              <select id="agencyType">
+                <option value="">Select agency</option>
+                <option value="Police">Police</option>
+                <option value="Ambulance">Ambulance</option>
+                <option value="PowerCor">PowerCor</option>
+                <option value="Gas">Gas</option>
+                <option value="SES">SES</option>
+                <option value="Local Government">Local Government</option>
+                <option value="Other">Other</option>
+              </select>
+              <button id="addAgencyBtn" class="secondary-btn" type="button">Add Agency</button>
             </div>
+            <div id="agencyBlocks"></div>
+          </div>
 
-            <div class="stack-item">
-              <button class="stack-toggle" data-target="structureSection">Structure Fire</button>
-              <div id="structureSection" class="stack-content">
-                <div class="inline-radio">
-                  <span>Structure report required?</span>
-                  <label><input type="radio" name="structureRequired" value="yes" /> Yes</label>
-                  <label><input type="radio" name="structureRequired" value="no" checked /> No</label>
-                </div>
-
-                <div id="structureFormWrap" class="hidden">
-                  <div class="accordion-group">
-                    <div class="accordion-item">
-                      <button class="accordion-toggle" data-target="structureBasicsPanel">Structure Basics</button>
-                      <div id="structureBasicsPanel" class="accordion-panel">
-                        <div class="form-grid">
-                          <label>Property Type<input type="text" id="structurePropertyType" /></label>
-                          <label>Building Height / Levels<input type="text" id="structureLevels" /></label>
-                          <label>Occupancy<input type="text" id="structureOccupancy" /></label>
-                          <label>Construction Type<input type="text" id="structureConstruction" /></label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="accordion-item">
-                      <button class="accordion-toggle" data-target="fireAreaPanel">Fire Area</button>
-                      <div id="fireAreaPanel" class="accordion-panel">
-                        <div class="form-grid">
-                          <label>Area of Origin<input type="text" id="fireAreaOrigin" /></label>
-                          <label>Extent of Fire<input type="text" id="fireAreaExtent" /></label>
-                          <label class="full-width">Comments<textarea id="fireAreaComments" rows="2"></textarea></label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="accordion-item">
-                      <button class="accordion-toggle" data-target="materialsPanel">Material & Fire Behaviour</button>
-                      <div id="materialsPanel" class="accordion-panel">
-                        <div class="form-grid">
-                          <label>Main Fuel Load<input type="text" id="fireFuelLoad" /></label>
-                          <label>Smoke / Fire Behaviour<input type="text" id="fireBehaviour" /></label>
-                          <label class="full-width">Comments<textarea id="fireMaterialComments" rows="2"></textarea></label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="accordion-item">
-                      <button class="accordion-toggle" data-target="detectionPanel">Detection & Alarm Systems</button>
-                      <div id="detectionPanel" class="accordion-panel">
-                        <div class="form-grid">
-                          <label>Detection Type<input type="text" id="detectionType" /></label>
-                          <label>Alarm Activated<input type="text" id="alarmActivated" /></label>
-                          <label class="full-width">Comments<textarea id="detectionComments" rows="2"></textarea></label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="accordion-item">
-                      <button class="accordion-toggle" data-target="suppressionPanel">Suppression Systems</button>
-                      <div id="suppressionPanel" class="accordion-panel">
-                        <div class="form-grid">
-                          <label>Suppression Type<input type="text" id="suppressionType" /></label>
-                          <label>Worked Effectively<input type="text" id="suppressionWorked" /></label>
-                          <label class="full-width">Comments<textarea id="suppressionComments" rows="2"></textarea></label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="accordion-item">
-                      <button class="accordion-toggle" data-target="portablePanel">Portable Equipment</button>
-                      <div id="portablePanel" class="accordion-panel">
-                        <div class="form-grid">
-                          <label>Extinguisher Use<input type="text" id="portableExtinguisher" /></label>
-                          <label>Blanket / Other<input type="text" id="portableOther" /></label>
-                          <label class="full-width">Comments<textarea id="portableComments" rows="2"></textarea></label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="stack-item">
-              <button class="stack-toggle" data-target="firstAgencySection">First Agency On Scene</button>
-              <div id="firstAgencySection" class="stack-content">
-                <select id="firstAgencySelect">
-                  <option value="">Choose first agency</option>
-                  <option value="CFA">CFA</option>
-                  <option value="FRV">FRV</option>
-                  <option value="Police">Police</option>
-                  <option value="Ambulance">Ambulance</option>
-                  <option value="SES">SES</option>
-                  <option value="PowerCor">PowerCor</option>
-                  <option value="Gas">Gas</option>
-                  <option value="Other">Other</option>
-                </select>
-                <input type="text" id="firstAgencyOther" class="hidden top-gap" placeholder="Other agency" />
-              </div>
-            </div>
-
-            <div class="stack-item">
-              <button class="stack-toggle" data-target="hoseSection">Hose Use</button>
-              <div id="hoseSection" class="stack-content">
-                <div class="form-grid hose-grid">
-                  <label>64<input type="number" id="hose64" min="0" max="6" inputmode="numeric" /></label>
-                  <label>38<input type="number" id="hose38" min="0" max="6" inputmode="numeric" /></label>
-                  <label>25<input type="number" id="hose25" min="0" max="6" inputmode="numeric" /></label>
-                  <label>Live Reel<input type="number" id="hoseLiveReel" min="0" max="6" inputmode="numeric" /></label>
-                </div>
-              </div>
-            </div>
-
-            <div class="stack-item">
-              <button class="stack-toggle" data-target="addAgencySection">Add Agency</button>
-              <div id="addAgencySection" class="stack-content">
-                <div class="agency-toolbar">
-                  <select id="agencyType">
-                    <option value="">Select agency</option>
-                    <option value="Police">Police</option>
-                    <option value="Ambulance">Ambulance</option>
-                    <option value="PowerCor">PowerCor</option>
-                    <option value="Gas">Gas</option>
-                    <option value="SES">SES</option>
-                    <option value="Local Government">Local Government</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <button id="addAgencyBtn" class="secondary-btn" type="button">Add Agency</button>
-                </div>
-                <div id="agencyBlocks"></div>
-              </div>
+          <div class="section">
+            <h3>Incident Flags</h3>
+            <div class="chips">
+              <button class="chip-btn" id="flagMembersBeforeBtn" type="button">Members before 1st appliance</button>
+              <button class="chip-btn" id="flagAarBtn" type="button">AAR required</button>
+              <button class="chip-btn" id="flagHotDebriefBtn" type="button">Hot debrief conducted</button>
             </div>
           </div>
 
-          <div class="incident-flags-wrap">
-            <div class="stage-label">Incident Flags</div>
-            <div class="chip-row chip-row-spaced">
-              <button type="button" class="mini-chip" id="flagMembersBeforeBtn">Members before 1st appliance</button>
-              <button type="button" class="mini-chip" id="flagAarRequiredBtn">AAR required</button>
-              <button type="button" class="mini-chip" id="flagHotDebriefBtn">Hot debrief conducted</button>
-            </div>
-          </div>
+          <label>Notes<textarea id="notes" rows="4"></textarea></label>
 
-          <div class="notes-row">
-            <label>
-              Notes
-              <textarea id="notes" rows="4"></textarea>
-            </label>
-          </div>
-
-          <div class="page-actions">
-            <button class="primary-btn next-btn" data-next="respondersPage" type="button">Next</button>
+          <div class="actions right">
+            <button class="primary-btn" data-next="respondersPage" type="button">Next</button>
           </div>
         </div>
       </section>
 
       <section id="respondersPage" class="page">
-        <div class="page-card">
+        <div class="card">
           <h2>Responders</h2>
 
-          <div class="stacked-sections">
-            <div class="stack-item">
-              <button class="stack-toggle open" data-target="connewarreResponders">Connewarre</button>
-              <div id="connewarreResponders" class="stack-content open"></div>
-            </div>
-
-            <div class="stack-item">
-              <button class="stack-toggle" data-target="mtdResponders">MTD</button>
-              <div id="mtdResponders" class="stack-content"></div>
-            </div>
-
-            <div class="stack-item">
-              <button class="stack-toggle" data-target="otherResponders">Others</button>
-              <div id="otherResponders" class="stack-content">
-                <div class="simple-responder-groups">
-                  <div class="appliance-group">
-                    <h3>Direct Responders</h3>
-                    <div id="directRespondersContainer"></div>
-                  </div>
-
-                  <div class="appliance-group">
-                    <h3>Station Responders</h3>
-                    <div id="stationRespondersContainer"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div class="section">
+            <h3>Connewarre</h3>
+            <div id="connewarreList"></div>
           </div>
 
-          <div class="page-actions dual">
-            <button class="secondary-btn back-btn" data-back="incidentPage" type="button">Back</button>
-            <button class="primary-btn next-btn" data-next="sendPage" type="button">Next</button>
+          <div class="section">
+            <h3>MTD</h3>
+            <div id="mtdList"></div>
+          </div>
+
+          <div class="actions split">
+            <button class="secondary-btn" data-back="incidentPage" type="button">Back</button>
+            <button class="primary-btn" data-next="sendPage" type="button">Next</button>
           </div>
         </div>
       </section>
 
       <section id="sendPage" class="page">
-        <div class="page-card">
+        <div class="card">
           <h2>Send Report</h2>
 
-          <div id="validationStatus" class="status-text"></div>
-          <div id="quietHoursWarning" class="warning-box hidden">
-            It’s a bit late to send paperwork. Consider saving and sending during normal hours unless urgent.
-          </div>
+          <div id="validationText" class="help-text"></div>
 
-          <label>
-            Report Preview
-            <textarea id="reportPreview" rows="22" readonly></textarea>
-          </label>
+          <label>Report Preview<textarea id="reportPreview" rows="20" readonly></textarea></label>
 
-          <div class="saved-reports">
-            <h3>Saved Reports</h3>
-            <div id="savedReportsList" class="saved-reports-list"></div>
-          </div>
-
-          <div class="page-actions dual">
-            <button class="secondary-btn back-btn" data-back="respondersPage" type="button">Back</button>
+          <div class="actions split">
+            <button class="secondary-btn" data-back="respondersPage" type="button">Back</button>
             <button id="finishBtn" class="primary-btn" type="button">Finish</button>
           </div>
 
-          <div id="finishActions" class="finish-actions hidden">
-            <button id="sendSmsBtn" class="secondary-btn" type="button">Send SMS</button>
-            <button id="sendEmailBtn" class="secondary-btn" type="button">Send Email</button>
-            <button id="saveLocalBtn" class="secondary-btn" type="button">Save Locally</button>
+          <div id="finishActions" class="hidden">
+            <div class="row wrap">
+              <button id="sendSmsBtn" class="secondary-btn" type="button">Send SMS</button>
+              <button id="sendEmailBtn" class="secondary-btn" type="button">Send Email</button>
+              <button id="saveLocalBtn" class="secondary-btn" type="button">Save Locally</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Saved Reports</h3>
+            <div id="savedReports"></div>
           </div>
         </div>
       </section>
     </main>
   </div>
 
-  <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+  <div id="settingsModal" class="modal hidden">
     <div class="modal-card">
-      <div class="modal-header">
-        <h2 id="settingsTitle">Profile / Settings</h2>
+      <div class="row between">
+        <h2>Profile / Settings</h2>
         <button id="closeSettingsBtn" class="tiny-btn" type="button">Close</button>
       </div>
 
-      <div class="form-grid">
-        <label>
-          Name
-          <input type="text" id="profileName" />
-        </label>
-
-        <label>
-          CFA Member Number
-          <input type="text" id="profileMemberNumber" />
-        </label>
-
-        <label>
-          Contact Number
-          <input type="text" id="profileContactNumber" />
-        </label>
-
-        <label>
-          Email
-          <input type="email" id="profileEmail" />
-        </label>
-
-        <label>
-          Brigade
-          <input type="text" id="profileBrigade" value="Connewarre" />
-        </label>
+      <div class="grid">
+        <label>Name<input id="profileName" type="text" /></label>
+        <label>CFA Member Number<input id="profileMemberNumber" type="text" /></label>
+        <label>Contact Number<input id="profileContactNumber" type="text" /></label>
+        <label>Email<input id="profileEmail" type="email" /></label>
+        <label>Brigade<input id="profileBrigade" type="text" value="Connewarre" /></label>
       </div>
 
-      <div class="page-actions dual">
+      <div class="actions right">
         <button id="saveProfileBtn" class="primary-btn" type="button">Save Profile</button>
       </div>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
