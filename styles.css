@@ -11,11 +11,11 @@
   --border: #d7dbe2;
   --primary: #b00020;
   --primary-dark: #8f0019;
+  --success: #18794e;
+  --success-dark: #12633f;
   --chip: #eef1f5;
   --shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
   --radius: 14px;
-  --success-bg: #eaf6ee;
-  --success-text: #1d6b36;
   --warning-bg: #fff4db;
   --warning-text: #8a5a00;
   --danger-bg: #fdecee;
@@ -49,15 +49,29 @@ body {
   max-width: 1100px;
   margin: 0 auto;
   padding: 12px 16px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  display: flex;
+  justify-content: space-between;
   gap: 14px;
   align-items: center;
 }
 
+.brand-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.logo {
+  height: 58px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .app-header h1 {
   margin: 0;
-  font-size: 1.45rem;
+  font-size: 1.35rem;
   letter-spacing: 0.03em;
   line-height: 1.2;
 }
@@ -66,6 +80,14 @@ body {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .oic-banner {
@@ -80,12 +102,6 @@ body {
 .oic-banner.missing {
   color: var(--primary);
   border-color: var(--primary);
-}
-
-.logo {
-  height: 76px;
-  width: auto;
-  object-fit: contain;
 }
 
 .top-nav {
@@ -114,12 +130,11 @@ body {
   border-radius: 12px;
   border: 1px solid var(--border);
   font-weight: 700;
+  background: var(--surface);
 }
 
 .status-banner.online {
-  background: var(--success-bg);
-  color: var(--success-text);
-  border-color: rgba(29, 107, 54, 0.2);
+  color: var(--text);
 }
 
 .status-banner.offline {
@@ -155,7 +170,8 @@ body {
 .primary-btn,
 .secondary-btn,
 .tiny-btn,
-.chip-btn {
+.chip-btn,
+.success-btn {
   appearance: none;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -182,6 +198,16 @@ body {
 .tab-btn.active:hover,
 .chip-btn.active:hover {
   background: var(--primary-dark);
+}
+
+.success-btn {
+  background: var(--success);
+  border-color: var(--success);
+  color: white;
+}
+
+.success-btn:hover {
+  background: var(--success-dark);
 }
 
 .main {
@@ -342,7 +368,8 @@ textarea {
 
 .scene-chip,
 .badge,
-.summary-item {
+.summary-item,
+.validation-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -352,6 +379,12 @@ textarea {
   border: 1px solid var(--border);
   font-size: 0.9rem;
   font-weight: 700;
+}
+
+.validation-chip {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-color: rgba(138, 90, 0, 0.25);
 }
 
 .scene-chip button {
@@ -418,7 +451,12 @@ textarea {
 
 @media (max-width: 860px) {
   .app-header {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .brand-wrap {
+    align-items: center;
   }
 
   .top-nav {
@@ -430,14 +468,18 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .logo {
-    height: 62px;
-  }
-
   .section-head,
   .status-banner {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .header-actions {
+    justify-content: flex-start;
+  }
+
+  .logo {
+    height: 52px;
   }
 }
 
@@ -451,8 +493,6 @@ textarea {
     --border: #313946;
     --chip: #242c36;
     --shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-    --success-bg: #173523;
-    --success-text: #bde7cb;
     --warning-bg: #45340d;
     --warning-text: #ffe6a3;
     --danger-bg: #441b21;
