@@ -1,55 +1,12 @@
-/* =========================================================
-   TURNOUT SHEET - CFA DIGITAL TURNOUT SHEET
-   Stable full replacement app.js
-   ========================================================= */
-
-const CONFIG = {
-  MAX_REPORTS: 10,
-  MAX_VEHICLES: 5,
-  QUIET_HOURS: { start: 22, end: 7 },
-  MEMBER_FILES: [
-    { key: "CONN", url: "CONN.members.json" },
-    { key: "GROV", url: "GROV.members.json" },
-    { key: "FRES", url: "FRES.members.json" }
-  ],
-  BRIGADE_SCENE_OPTIONS: ["CONN", "GROV", "FRES", "P64", "P32", "P31", "P33", "P35", "P41"],
-  AGENCY_TYPES: ["Police", "Ambulance", "PowerCor", "Gas", "SES", "Local Government", "Other"],
-  INCIDENT_TYPES: ["ALAR", "STRU", "NONS", "INCI", "G&SC"],
-  CODE_LEVELS: ["C1", "C3"],
-  VEHICLE_MAKES: [
-    "Toyota", "Ford", "Holden", "Mazda", "Hyundai", "Kia", "Mitsubishi", "Nissan",
-    "Subaru", "Volkswagen", "BMW", "Mercedes", "Audi", "Isuzu", "LDV", "Tesla",
-    "BYD", "MG", "GWM", "Volvo", "Skoda", "Jeep", "Suzuki", "Lexus", "Ram", "Other"
-  ],
-  STATES: ["VIC", "NSW", "SA", "TAS", "ACT", "QLD", "WA", "NT"],
-  OCCUPANTS: ["0", "1", "2", "3", "4+", "Unknown"],
-  TRI_STATE: ["Yes", "No", "Unknown"],
-  VEHICLE_STABILITY: ["Upright", "On side", "On roof", "Unknown"],
-  VEHICLE_PROPULSION: [
-    "ICE (Internal Combustion Engine – Petrol/Diesel)",
-    "LPG",
-    "Hybrid Electric Vehicle (HEV)",
-    "Plug-in Hybrid Electric Vehicle (PHEV)",
-    "Battery Electric Vehicle (BEV)",
-    "Hydrogen Fuel Cell (FCEV)",
-    "Heavy Vehicle / Diesel Truck",
-    "Unknown",
-    "Other"
-  ],
-  FIRST_AGENCIES: ["CFA", "FRV", "Police", "Ambulance", "SES", "PowerCor", "Gas", "Other"],
-  RESPONSE_DESTINATIONS_CONNEWARRE: ["T1", "T2", "Station", "Direct"],
-  RESPONSE_DESTINATIONS_MTD: ["MTD P/T", "Station", "Direct"],
-  TRUCK_ROLES: ["Driver", "CL"],
-  MVA_KEYWORDS: [
-    "INCI", "MVA", "MVC", "MVI", "VEHICLE", "COLLISION", "CRASH",
-    "ROLLOVER", "TRAPPED", "ROAD RESCUE", "CAR INTO", "TRUCK INTO", "VEHICLE INTO"
-  ]
+const STORAGE_KEYS = {
+  PROFILE: "turnout_profile_v1",
+  REPORTS: "turnout_reports_v1"
 };
 
-const STORAGE_KEYS = {
-  PROFILE: "turnout_profile",
-  SAVED_REPORTS: "turnout_saved_reports",
-  DRAFT: "turnout_draft_state"
+const MEMBER_FILES = {
+  CONN: "CONN.members.json",
+  GROV: "GROV.members.json",
+  FRES: "FRES.members.json"
 };
 
 const state = {
@@ -66,48 +23,18 @@ const state = {
     brigadesOnScene: [],
     firstAgency: "",
     firstAgencyOther: "",
+    notes: "",
     flags: {
       membersBefore: false,
-      aarRequired: false,
+      aar: false,
       hotDebrief: false
-    },
-    notes: "",
-    pagerRawText: ""
+    }
   },
   responders: {
     connewarre: [],
     mtd: []
   },
   agencies: [],
-  vehicles: [],
-  structure: {
-    required: false,
-    propertyType: "",
-    levels: "",
-    occupancy: "",
-    construction: "",
-    fireAreaOrigin: "",
-    fireAreaExtent: "",
-    fireAreaComments: "",
-    fireFuelLoad: "",
-    fireBehaviour: "",
-    fireMaterialComments: "",
-    detectionType: "",
-    alarmActivated: "",
-    detectionComments: "",
-    suppressionType: "",
-    suppressionWorked: "",
-    suppressionComments: "",
-    portableExtinguisher: "",
-    portableOther: "",
-    portableComments: ""
-  },
-  hoseUse: {
-    "64": "",
-    "38": "",
-    "25": "",
-    "Live Reel": ""
-  },
   profile: {
     name: "",
     memberNumber: "",
@@ -115,95 +42,37 @@ const state = {
     email: "",
     brigade: "Connewarre"
   },
+  savedReports: [],
   memberLists: {
     CONN: [],
     GROV: [],
     FRES: []
   },
-  savedReports: [],
   ui: {
     currentPage: "incidentPage",
-    pagerImageFile: null,
-    pagerPreviewUrl: "",
-    pagerCropPreviewUrl: "",
-    reportPreview: ""
+    previewUrl: ""
   }
 };
 
 document.addEventListener("DOMContentLoaded", init);
 
-function createResponder(group) {
-  return {
-    id: cryptoRandomId(),
-    group,
-    brigade: group === "connewarre" ? "CONN" : "",
-    name: "",
-    phone: "",
-    destination: "",
-    truckRole: "",
-    ba: false,
-    injury: false,
-    oic: false
-  };
-}
-
-function ensureMinimumResponderRows() {
-  if (!state.responders) {
-    state.responders = {};
-  }
-
-  if (!Array.isArray(state.responders.connewarre) || !state.responders.connewarre.length) {
-    state.responders.connewarre = [createResponder("connewarre")];
-  }
-
-  if (!Array.isArray(state.responders.mtd) || !state.responders.mtd.length) {
-    state.responders.mtd = [createResponder("mtd")];
-  }
-}
-
 async function init() {
-  try {
-    await loadMemberLists();
-    loadProfile();
-    loadSavedReports();
-    restoreDraft();
+  await loadMemberLists();
+  loadProfile();
+  loadSavedReports();
 
-    ensureMinimumResponderRows();
-    bindBaseEvents();
-    syncAllFieldsToUi();
-    renderResponders();
-    renderAgencies();
-    renderVehicles();
-    renderBrigadesOnScene();
-    renderSavedReports();
-    updateHeaderOicStatus();
-    showPage(state.ui.currentPage || "incidentPage");
-    registerServiceWorker();
-  } catch (error) {
-    console.error("Init failed", error);
-    setStatus("ocrStatus", "App failed to initialise. Refresh and try again.");
-  }
+  ensureRows();
+  bindStaticEvents();
+  bindIncidentEvents();
+  renderEverything();
 }
-
-/* =========================================================
-   BASIC HELPERS
-   ========================================================= */
 
 function el(id) {
   return document.getElementById(id);
 }
 
-function setStatus(id, text) {
-  const node = el(id);
-  if (node) node.textContent = text;
-}
-
-function normaliseSpacing(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-
-function escapeHtml(value) {
-  return String(value || "")
+function text(v) {
+  return String(v || "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -211,59 +80,28 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function cryptoRandomId() {
-  return `id_${Math.random().toString(36).slice(2, 11)}`;
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
 }
 
-function lineIfValue(label, value) {
-  if (value === null || value === undefined || String(value).trim() === "") return "";
-  return `${label}: ${value}`;
+async function loadMemberLists() {
+  for (const [key, path] of Object.entries(MEMBER_FILES)) {
+    try {
+      const res = await fetch(path);
+      if (!res.ok) throw new Error(path);
+      const data = await res.json();
+      state.memberLists[key] = Array.isArray(data) ? data : [];
+    } catch {
+      state.memberLists[key] = [];
+    }
+  }
 }
-
-function formatDateForReport(value) {
-  if (!value) return "";
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
-  return `${day}/${month}/${year}`;
-}
-
-function formatBrigadeName(brigadeKey) {
-  if (brigadeKey === "CONN") return "Connewarre";
-  if (brigadeKey === "GROV") return "Grovedale";
-  if (brigadeKey === "FRES") return "Freshwater Creek";
-  return brigadeKey || "";
-}
-
-function appendBrigadeIfNeeded(responder) {
-  return responder.brigade && responder.brigade !== "CONN"
-    ? `${responder.name} (${formatBrigadeName(responder.brigade)})`
-    : responder.name;
-}
-
-function isPrimaryConnJob() {
-  return (state.incident.brigadeCode || "").toUpperCase().startsWith("CONN");
-}
-
-function getAllResponders() {
-  return [...state.responders.connewarre, ...state.responders.mtd];
-}
-
-function findResponderById(id) {
-  return getAllResponders().find((r) => r.id === id);
-}
-
-/* =========================================================
-   STORAGE
-   ========================================================= */
 
 function loadProfile() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
-    if (!raw) return;
-    state.profile = { ...state.profile, ...JSON.parse(raw) };
-  } catch (error) {
-    console.warn("Profile load failed", error);
-  }
+    if (raw) state.profile = { ...state.profile, ...JSON.parse(raw) };
+  } catch {}
 }
 
 function saveProfile() {
@@ -272,185 +110,93 @@ function saveProfile() {
 
 function loadSavedReports() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.SAVED_REPORTS);
+    const raw = localStorage.getItem(STORAGE_KEYS.REPORTS);
     state.savedReports = raw ? JSON.parse(raw) : [];
-  } catch (error) {
+  } catch {
     state.savedReports = [];
   }
 }
 
 function saveSavedReports() {
-  localStorage.setItem(STORAGE_KEYS.SAVED_REPORTS, JSON.stringify(state.savedReports));
+  localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(state.savedReports));
 }
 
-function persistDraft() {
-  localStorage.setItem(STORAGE_KEYS.DRAFT, JSON.stringify(state));
+function createResponder(group) {
+  return {
+    id: uid(),
+    group,
+    brigade: group === "connewarre" ? "CONN" : "",
+    name: "",
+    phone: "",
+    destination: "",
+    truckRole: "",
+    ba: false,
+    injured: false,
+    oic: false
+  };
 }
 
-function restoreDraft() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.DRAFT);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-
-    if (parsed.incident) {
-      state.incident = { ...state.incident, ...parsed.incident };
-      if (!Array.isArray(state.incident.brigadesOnScene)) state.incident.brigadesOnScene = [];
-    }
-    if (parsed.responders) {
-      state.responders = { ...state.responders, ...parsed.responders };
-    }
-    if (parsed.agencies) state.agencies = parsed.agencies;
-    if (parsed.vehicles) state.vehicles = parsed.vehicles;
-    if (parsed.structure) state.structure = { ...state.structure, ...parsed.structure };
-    if (parsed.hoseUse) state.hoseUse = { ...state.hoseUse, ...parsed.hoseUse };
-    if (parsed.profile) state.profile = { ...state.profile, ...parsed.profile };
-    if (parsed.savedReports) state.savedReports = parsed.savedReports;
-    if (parsed.ui) {
-      state.ui.currentPage = parsed.ui.currentPage || "incidentPage";
-      state.ui.reportPreview = parsed.ui.reportPreview || "";
-    }
-  } catch (error) {
-    console.warn("Draft restore failed", error);
-  }
+function ensureRows() {
+  if (!state.responders.connewarre.length) state.responders.connewarre.push(createResponder("connewarre"));
+  if (!state.responders.mtd.length) state.responders.mtd.push(createResponder("mtd"));
 }
 
-/* =========================================================
-   MEMBER LISTS
-   ========================================================= */
-
-async function loadMemberLists() {
-  for (const file of CONFIG.MEMBER_FILES) {
-    try {
-      const res = await fetch(file.url);
-      if (!res.ok) throw new Error(`Failed to load ${file.url}`);
-      const data = await res.json();
-      state.memberLists[file.key] = Array.isArray(data) ? data : [];
-    } catch (error) {
-      console.warn(`Could not load ${file.url}`, error);
-      state.memberLists[file.key] = [];
-    }
-  }
-}
-
-function getMemberRecord(brigadeKey, memberName) {
-  if (!brigadeKey || !memberName) return null;
-  const members = state.memberLists[brigadeKey] || [];
-  const target = memberName.trim().toUpperCase();
-
-  return members.find((member) => {
-    const name = typeof member === "string" ? member : (member.name || "");
-    return name.trim().toUpperCase() === target;
-  }) || null;
-}
-
-function getMemberPhone(brigadeKey, memberName) {
-  const record = getMemberRecord(brigadeKey, memberName);
-  if (!record || typeof record === "string") return "";
-  return record.phone || "";
-}
-
-function getMemberOptionsHtml(brigadeKey, currentValue = "") {
-  const options = (state.memberLists[brigadeKey] || []).map((member) => {
-    const name = typeof member === "string" ? member : (member.name || "");
-    return `<option value="${escapeHtml(name)}"></option>`;
-  });
-
-  if (currentValue && !options.some((opt) => opt.includes(`value="${escapeHtml(currentValue)}"`))) {
-    options.unshift(`<option value="${escapeHtml(currentValue)}"></option>`);
-  }
-
-  return options.join("");
-}
-
-function getCombinedMtdMemberOptionsHtml(currentValue = "") {
-  const names = [];
-  ["CONN", "GROV", "FRES"].forEach((key) => {
-    (state.memberLists[key] || []).forEach((member) => {
-      const name = typeof member === "string" ? member : (member.name || "");
-      if (name) names.push(name);
-    });
-  });
-
-  const unique = [...new Set(names)];
-  const html = unique.map((name) => `<option value="${escapeHtml(name)}"></option>`);
-
-  if (currentValue && !unique.includes(currentValue)) {
-    html.unshift(`<option value="${escapeHtml(currentValue)}"></option>`);
-  }
-
-  return html.join("");
-}
-
-function inferMtdMemberRecord(memberName) {
-  const target = String(memberName || "").trim().toUpperCase();
-  if (!target) return null;
-
-  for (const key of ["CONN", "GROV", "FRES"]) {
-    const found = (state.memberLists[key] || []).find((member) => {
-      const name = typeof member === "string" ? member : (member.name || "");
-      return name.trim().toUpperCase() === target;
-    });
-
-    if (found) {
-      return {
-        brigade: key,
-        phone: typeof found === "string" ? "" : (found.phone || "")
-      };
-    }
-  }
-
-  return null;
-}
-
-/* =========================================================
-   BASE EVENTS
-   ========================================================= */
-
-function bindBaseEvents() {
-  document.querySelectorAll(".nav-btn[data-page]").forEach((btn) => {
+function bindStaticEvents() {
+  document.querySelectorAll(".tab-btn[data-page]").forEach((btn) => {
     btn.addEventListener("click", () => showPage(btn.dataset.page));
   });
 
-  document.querySelectorAll(".next-btn").forEach((btn) => {
+  document.querySelectorAll("[data-next]").forEach((btn) => {
     btn.addEventListener("click", () => showPage(btn.dataset.next));
   });
 
-  document.querySelectorAll(".back-btn").forEach((btn) => {
+  document.querySelectorAll("[data-back]").forEach((btn) => {
     btn.addEventListener("click", () => showPage(btn.dataset.back));
   });
 
-  document.querySelectorAll(".stack-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const target = el(btn.dataset.target);
-      if (target) target.classList.toggle("open");
-    });
+  el("openSettingsBtn").addEventListener("click", openSettings);
+  el("closeSettingsBtn").addEventListener("click", closeSettings);
+  el("saveProfileBtn").addEventListener("click", saveProfileFromUi);
+
+  el("pagerUpload").addEventListener("change", handleImageUpload);
+  el("scanBtn").addEventListener("click", () => {
+    el("scanStatus").textContent = "OCR is intentionally disabled in this clean rebuild. Base app first.";
   });
 
-  document.querySelectorAll(".accordion-toggle").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const target = el(btn.dataset.target);
-      if (target) target.classList.toggle("open");
-    });
+  el("addSceneBrigadeBtn").addEventListener("click", addSceneBrigade);
+  el("sceneBrigadeSelect").addEventListener("change", () => {
+    el("sceneBrigadeOther").classList.toggle("hidden", el("sceneBrigadeSelect").value !== "Other");
   });
 
-  if (el("settingsBtn")) el("settingsBtn").addEventListener("click", openSettingsModal);
-  if (el("closeSettingsBtn")) el("closeSettingsBtn").addEventListener("click", closeSettingsModal);
-  if (el("saveProfileBtn")) el("saveProfileBtn").addEventListener("click", saveProfileFromUi);
+  el("firstAgency").addEventListener("change", () => {
+    el("firstAgencyOther").classList.toggle("hidden", el("firstAgency").value !== "Other");
+    state.incident.firstAgency = el("firstAgency").value;
+    renderEverything();
+  });
 
-  if (el("pagerUpload")) el("pagerUpload").addEventListener("change", handleImageUpload);
-  if (el("runOcrBtn")) el("runOcrBtn").addEventListener("click", runOcrPipeline);
+  el("firstAgencyOther").addEventListener("input", () => {
+    state.incident.firstAgencyOther = el("firstAgencyOther").value;
+  });
 
-  bindIncidentFieldEvents();
-  bindSceneBrigadeEvents();
-  bindStructureEvents();
-  bindVehicleEvents();
-  bindAgencyEvents();
-  bindSendEvents();
+  el("addAgencyBtn").addEventListener("click", addAgency);
+
+  el("flagMembersBeforeBtn").addEventListener("click", () => toggleFlag("membersBefore", "flagMembersBeforeBtn"));
+  el("flagAarBtn").addEventListener("click", () => toggleFlag("aar", "flagAarBtn"));
+  el("flagHotDebriefBtn").addEventListener("click", () => toggleFlag("hotDebrief", "flagHotDebriefBtn"));
+
+  el("resetFirsBtn").addEventListener("click", () => {
+    state.incident.firsCode = "";
+    el("firsCode").value = "";
+  });
+
+  el("finishBtn").addEventListener("click", finishReport);
+  el("saveLocalBtn").addEventListener("click", saveCurrentReport);
+  el("sendEmailBtn").addEventListener("click", sendEmail);
+  el("sendSmsBtn").addEventListener("click", sendSms);
 }
 
-function bindIncidentFieldEvents() {
-  const textBindings = [
+function bindIncidentEvents() {
+  const map = [
     ["eventNumber", "eventNumber"],
     ["pagerDate", "pagerDate"],
     ["pagerTime", "pagerTime"],
@@ -462,885 +208,72 @@ function bindIncidentFieldEvents() {
     ["notes", "notes"]
   ];
 
-  textBindings.forEach(([id, key]) => {
-    const node = el(id);
-    if (!node) return;
-    node.addEventListener("input", (e) => {
+  map.forEach(([id, key]) => {
+    el(id).addEventListener("input", (e) => {
       state.incident[key] = e.target.value;
-      if (key === "brigadeCode") updateBrigadeRole();
-      if (key === "incidentType") updateStructureVisibilityByIncidentType();
-      if (key === "firsCode") updateFirsLabel();
-      persistDraft();
+      if (key === "brigadeCode") {
+        const code = e.target.value.trim().toUpperCase();
+        state.incident.brigadeRole = code.startsWith("CONN") ? "Primary" : code ? "Support" : "";
+        el("brigadeRole").value = state.incident.brigadeRole;
+      }
     });
   });
-
-  if (el("resetFirsBtn")) {
-    el("resetFirsBtn").addEventListener("click", () => {
-      state.incident.firsCode = "";
-      el("firsCode").value = "";
-      updateFirsLabel();
-      persistDraft();
-    });
-  }
-
-  if (el("firstAgencySelect")) {
-    el("firstAgencySelect").addEventListener("change", (e) => {
-      state.incident.firstAgency = e.target.value;
-      el("firstAgencyOther").classList.toggle("hidden", e.target.value !== "Other");
-      persistDraft();
-    });
-  }
-
-  if (el("firstAgencyOther")) {
-    el("firstAgencyOther").addEventListener("input", (e) => {
-      state.incident.firstAgencyOther = e.target.value;
-      persistDraft();
-    });
-  }
-
-  if (el("flagMembersBeforeBtn")) {
-    el("flagMembersBeforeBtn").addEventListener("click", () => {
-      state.incident.flags.membersBefore = !state.incident.flags.membersBefore;
-      renderIncidentFlagButtons();
-      persistDraft();
-    });
-  }
-
-  if (el("flagAarRequiredBtn")) {
-    el("flagAarRequiredBtn").addEventListener("click", () => {
-      state.incident.flags.aarRequired = !state.incident.flags.aarRequired;
-      renderIncidentFlagButtons();
-      persistDraft();
-    });
-  }
-
-  if (el("flagHotDebriefBtn")) {
-    el("flagHotDebriefBtn").addEventListener("click", () => {
-      state.incident.flags.hotDebrief = !state.incident.flags.hotDebrief;
-      renderIncidentFlagButtons();
-      persistDraft();
-    });
-  }
 }
-
-function bindSceneBrigadeEvents() {
-  if (el("brigadeOnSceneSelect")) {
-    el("brigadeOnSceneSelect").addEventListener("change", (e) => {
-      el("brigadeOnSceneOther").classList.toggle("hidden", e.target.value !== "Other");
-    });
-  }
-
-  if (el("addBrigadeOnSceneBtn")) {
-    el("addBrigadeOnSceneBtn").addEventListener("click", addBrigadeOnSceneFromUi);
-  }
-}
-
-function collectStructureData() {
-  state.structure.propertyType = el("structurePropertyType")?.value || "";
-  state.structure.levels = el("structureLevels")?.value || "";
-  state.structure.occupancy = el("structureOccupancy")?.value || "";
-  state.structure.construction = el("structureConstruction")?.value || "";
-  state.structure.fireAreaOrigin = el("fireAreaOrigin")?.value || "";
-  state.structure.fireAreaExtent = el("fireAreaExtent")?.value || "";
-  state.structure.fireAreaComments = el("fireAreaComments")?.value || "";
-  state.structure.fireFuelLoad = el("fireFuelLoad")?.value || "";
-  state.structure.fireBehaviour = el("fireBehaviour")?.value || "";
-  state.structure.fireMaterialComments = el("fireMaterialComments")?.value || "";
-  state.structure.detectionType = el("detectionType")?.value || "";
-  state.structure.alarmActivated = el("alarmActivated")?.value || "";
-  state.structure.detectionComments = el("detectionComments")?.value || "";
-  state.structure.suppressionType = el("suppressionType")?.value || "";
-  state.structure.suppressionWorked = el("suppressionWorked")?.value || "";
-  state.structure.suppressionComments = el("suppressionComments")?.value || "";
-  state.structure.portableExtinguisher = el("portableExtinguisher")?.value || "";
-  state.structure.portableOther = el("portableOther")?.value || "";
-  state.structure.portableComments = el("portableComments")?.value || "";
-
-  persistDraft();
-}
-
-function collectStructureData() {
-  state.structure.propertyType = el("structurePropertyType")?.value || "";
-  state.structure.levels = el("structureLevels")?.value || "";
-  state.structure.occupancy = el("structureOccupancy")?.value || "";
-  state.structure.construction = el("structureConstruction")?.value || "";
-  state.structure.fireAreaOrigin = el("fireAreaOrigin")?.value || "";
-  state.structure.fireAreaExtent = el("fireAreaExtent")?.value || "";
-  state.structure.fireAreaComments = el("fireAreaComments")?.value || "";
-  state.structure.fireFuelLoad = el("fireFuelLoad")?.value || "";
-  state.structure.fireBehaviour = el("fireBehaviour")?.value || "";
-  state.structure.fireMaterialComments = el("fireMaterialComments")?.value || "";
-  state.structure.detectionType = el("detectionType")?.value || "";
-  state.structure.alarmActivated = el("alarmActivated")?.value || "";
-  state.structure.detectionComments = el("detectionComments")?.value || "";
-  state.structure.suppressionType = el("suppressionType")?.value || "";
-  state.structure.suppressionWorked = el("suppressionWorked")?.value || "";
-  state.structure.suppressionComments = el("suppressionComments")?.value || "";
-  state.structure.portableExtinguisher = el("portableExtinguisher")?.value || "";
-  state.structure.portableOther = el("portableOther")?.value || "";
-  state.structure.portableComments = el("portableComments")?.value || "";
-
-  persistDraft();
-}
-
-function collectHoseUse() {
-  state.hoseUse["64"] = el("hose64")?.value || "";
-  state.hoseUse["38"] = el("hose38")?.value || "";
-  state.hoseUse["25"] = el("hose25")?.value || "";
-  state.hoseUse["Live Reel"] = el("hoseLiveReel")?.value || "";
-
-  persistDraft();
-   
-}
-function bindStructureEvents() {
-  document.querySelectorAll('input[name="structureRequired"]').forEach((radio) => {
-    radio.addEventListener("change", () => {
-      const checked = document.querySelector('input[name="structureRequired"]:checked');
-      state.structure.required = checked?.value === "yes";
-      el("structureFormWrap").classList.toggle("hidden", !state.structure.required);
-      persistDraft();
-    });
-  });
-
-  [
-    "structurePropertyType", "structureLevels", "structureOccupancy", "structureConstruction",
-    "fireAreaOrigin", "fireAreaExtent", "fireAreaComments",
-    "fireFuelLoad", "fireBehaviour", "fireMaterialComments",
-    "detectionType", "alarmActivated", "detectionComments",
-    "suppressionType", "suppressionWorked", "suppressionComments",
-    "portableExtinguisher", "portableOther", "portableComments"
-  ].forEach((id) => {
-    const node = el(id);
-    if (!node) return;
-    node.addEventListener("input", collectStructureData);
-  });
-
-  ["hose64", "hose38", "hose25", "hoseLiveReel"].forEach((id) => {
-    const node = el(id);
-    if (!node) return;
-    node.addEventListener("input", collectHoseUse);
-  });
-}
-
-function bindVehicleEvents() {
-  if (el("vehicleCount")) {
-    el("vehicleCount").addEventListener("change", (e) => {
-      setVehicleCount(Number(e.target.value));
-    });
-  }
-}
-
-function bindAgencyEvents() {
-  if (el("addAgencyBtn")) {
-    el("addAgencyBtn").addEventListener("click", () => {
-      const type = el("agencyType").value;
-      if (!type) return;
-      addAgencyBlock(type);
-      el("agencyType").value = "";
-    });
-  }
-}
-
-function bindSendEvents() {
-  if (el("finishBtn")) el("finishBtn").addEventListener("click", handleFinish);
-  if (el("sendSmsBtn")) el("sendSmsBtn").addEventListener("click", sendSms);
-  if (el("sendEmailBtn")) el("sendEmailBtn").addEventListener("click", sendEmail);
-  if (el("saveLocalBtn")) el("saveLocalBtn").addEventListener("click", saveReportLocally);
-}
-
-/* =========================================================
-   OCR / IMAGE PREVIEW
-   ========================================================= */
 
 function handleImageUpload(e) {
-  const file = e.target.files?.[0] || null;
-  state.ui.pagerImageFile = file;
-
-  if (!file) {
-    state.ui.pagerPreviewUrl = "";
-    state.ui.pagerCropPreviewUrl = "";
-    renderPagerPreviews();
-    setStatus("ocrStatus", "No screenshot selected.");
-    return;
-  }
+  const file = e.target.files?.[0];
+  if (!file) return;
 
   const reader = new FileReader();
   reader.onload = () => {
-    state.ui.pagerPreviewUrl = reader.result;
-    state.ui.pagerCropPreviewUrl = "";
-    renderPagerPreviews();
-    setStatus("ocrStatus", `Loaded ${file.name}. Scanning...`);
-    runOcrPipeline();
-  };
-  reader.onerror = () => {
-    setStatus("ocrStatus", "Could not read screenshot file.");
+    state.ui.previewUrl = reader.result;
+    el("pagerPreview").src = reader.result;
+    el("pagerPreview").classList.remove("hidden");
+    el("pagerPreviewEmpty").classList.add("hidden");
+    el("scanStatus").textContent = `Loaded ${file.name}`;
   };
   reader.readAsDataURL(file);
 }
 
-async function runOcrPipeline() {
-  if (!state.ui.pagerImageFile) {
-    setStatus("ocrStatus", "Please upload a pager screenshot first.");
-    return;
-  }
-
-  if (typeof Tesseract === "undefined") {
-    setStatus("ocrStatus", "OCR library not loaded.");
-    return;
-  }
-
-  try {
-    setStatus("ocrStatus", "Scanning screenshot...");
-
-    const imageBitmap = await createImageBitmap(state.ui.pagerImageFile);
-    const rects = findPagerRectangles(imageBitmap);
-    const selectedRect = rects.length ? selectBestPagerRectangle(rects) : null;
-
-    const cropCanvas = cropPagerRectangle(imageBitmap, selectedRect);
-    state.ui.pagerCropPreviewUrl = cropCanvas.toDataURL("image/png");
-    renderPagerPreviews();
-
-    let text = await runPagerOCR(cropCanvas);
-    let parsed = parsePagerMessage(text);
-
-    if (!isUsefulPagerParse(parsed)) {
-      const fullCanvas = cropPagerRectangle(imageBitmap, null);
-      text = await runPagerOCR(fullCanvas);
-      const fullParsed = parsePagerMessage(text);
-      if (scorePagerParse(fullParsed) >= scorePagerParse(parsed)) {
-        parsed = fullParsed;
-        state.ui.pagerCropPreviewUrl = fullCanvas.toDataURL("image/png");
-        renderPagerPreviews();
-      }
-    }
-
-    if (!isUsefulPagerParse(parsed)) {
-      setStatus("ocrStatus", "Scan ran, but the pager details were too weak to populate safely.");
-      return;
-    }
-
-    populateIncidentFields(parsed);
-    state.incident.pagerRawText = parsed.rawText || "";
-    setStatus("ocrStatus", "Pager details extracted.");
-    persistDraft();
-  } catch (error) {
-    console.error("OCR failed", error);
-    setStatus("ocrStatus", "Scan failed. Try a clearer screenshot.");
-  }
-}
-
-function renderPagerPreviews() {
-  const preview = el("pagerPreviewImage");
-  const previewEmpty = el("pagerPreviewEmpty");
-  const crop = el("pagerCropPreviewImage");
-  const cropEmpty = el("pagerCropPreviewEmpty");
-
-  if (preview) {
-    if (state.ui.pagerPreviewUrl) {
-      preview.src = state.ui.pagerPreviewUrl;
-      preview.classList.remove("hidden");
-      if (previewEmpty) previewEmpty.classList.add("hidden");
-    } else {
-      preview.src = "";
-      preview.classList.add("hidden");
-      if (previewEmpty) previewEmpty.classList.remove("hidden");
-    }
-  }
-
-  if (crop) {
-    if (state.ui.pagerCropPreviewUrl) {
-      crop.src = state.ui.pagerCropPreviewUrl;
-      crop.classList.remove("hidden");
-      if (cropEmpty) cropEmpty.classList.add("hidden");
-    } else {
-      crop.src = "";
-      crop.classList.add("hidden");
-      if (cropEmpty) cropEmpty.classList.remove("hidden");
-    }
-  }
-}
-
-function findPagerRectangles(imageBitmap) {
-  const canvas = document.createElement("canvas");
-  canvas.width = imageBitmap.width;
-  canvas.height = imageBitmap.height;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(imageBitmap, 0, 0);
-
-  const { width, height } = canvas;
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-
-  const rowScores = [];
-  for (let y = 0; y < height; y++) {
-    let darkPixels = 0;
-    for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4;
-      const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-      if (avg < 190) darkPixels++;
-    }
-    rowScores.push(darkPixels / width);
-  }
-
-  const bands = [];
-  let start = null;
-
-  for (let i = 0; i < rowScores.length; i++) {
-    if (rowScores[i] > 0.10 && start === null) start = i;
-    if ((rowScores[i] <= 0.10 || i === rowScores.length - 1) && start !== null) {
-      const end = i;
-      const bandHeight = end - start;
-      if (bandHeight > 100) {
-        bands.push({ x: 0, y: start, width, height: bandHeight });
-      }
-      start = null;
-    }
-  }
-
-  if (!bands.length) return [{ x: 0, y: 0, width, height }];
-  return bands.slice(0, 5);
-}
-
-function selectBestPagerRectangle(rectangles) {
-  return rectangles.sort((a, b) => a.y - b.y)[0];
-}
-
-function cropPagerRectangle(imageBitmap, rect) {
-  const canvas = document.createElement("canvas");
-  const x = rect?.x || 0;
-  const y = rect?.y || 0;
-  const width = rect?.width || imageBitmap.width;
-  const height = rect?.height || imageBitmap.height;
-
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(imageBitmap, x, y, width, height, 0, 0, width, height);
-  return canvas;
-}
-
-async function runPagerOCR(canvas) {
-  const result = await Tesseract.recognize(canvas, "eng", { logger: () => {} });
-  return result?.data?.text || "";
-}
-
-function parsePagerMessage(rawText) {
-  const text = String(rawText || "").replace(/\r/g, "\n").trim();
-  const upper = text.toUpperCase();
-  const compact = upper.replace(/\n/g, " ");
-
-  const eventNumber = (compact.match(/\bF\d{9}\b/) || [])[0] || "";
-
-  const dateMatch = compact.match(/\b(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})\b/);
-  let pagerDate = "";
-  if (dateMatch) {
-    const day = dateMatch[1];
-    const month = dateMatch[2];
-    let year = dateMatch[3];
-    if (year.length === 2) year = `20${year}`;
-    pagerDate = `${year}-${month}-${day}`;
-  }
-
-  const timeMatch = compact.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-  const pagerTime = timeMatch ? `${timeMatch[1].padStart(2, "0")}:${timeMatch[2]}` : "";
-
-  const brigadeCode = (compact.match(/\b(CONN|GROV|FRES)\d\b/) || [])[0] || "";
-  const incidentClassMatch = compact.match(/\b(ALAR|STRU|NONS|INCI|G&SC)(C1|C3)?\b/);
-  const incidentType = incidentClassMatch?.[1] || "";
-  const codeLevel = incidentClassMatch?.[2] || "";
-
-  const address = extractPagerAddress(compact);
-  const brigadesOnScene = extractKnownBrigades(compact);
-
-  return {
-    rawText: text,
-    upper: compact,
-    eventNumber,
-    pagerDate,
-    pagerTime,
-    brigadeCode,
-    incidentType,
-    codeLevel,
-    address,
-    brigadesOnScene
-  };
-}
-
-function extractPagerAddress(text) {
-  const withSlash = text.match(/(\d{1,5}\s+[A-Z0-9.' -]+?\s(?:ST|RD|AV))\s*\//i);
-  if (withSlash) return normaliseSpacing(withSlash[1]);
-
-  const fallback = text.match(/(\d{1,5}\s+[A-Z0-9.' -]+?\s(?:ST|RD|AV))\b/i);
-  if (fallback) return normaliseSpacing(fallback[1]);
-
-  return "";
-}
-
-function extractKnownBrigades(text) {
-  const found = [];
-  CONFIG.BRIGADE_SCENE_OPTIONS.forEach((code) => {
-    if (text.includes(code) && !found.includes(code)) found.push(code);
-  });
-  return found;
-}
-
-function scorePagerParse(parsed) {
-  let score = 0;
-  if (parsed.eventNumber) score += 3;
-  if (parsed.address) score += 4;
-  if (parsed.brigadeCode) score += 2;
-  if (parsed.incidentType) score += 2;
-  if (parsed.pagerTime) score += 1;
-  return score;
-}
-
-function isUsefulPagerParse(parsed) {
-  return scorePagerParse(parsed) >= 4;
-}
-
-function populateIncidentFields(parsed) {
-  state.incident.eventNumber = parsed.eventNumber || state.incident.eventNumber;
-  state.incident.pagerDate = parsed.pagerDate || state.incident.pagerDate;
-  state.incident.pagerTime = parsed.pagerTime || state.incident.pagerTime;
-  state.incident.brigadeCode = parsed.brigadeCode || state.incident.brigadeCode;
-  state.incident.incidentType = parsed.incidentType || state.incident.incidentType;
-  state.incident.codeLevel = parsed.codeLevel || state.incident.codeLevel;
-  state.incident.address = parsed.address || state.incident.address;
-
-  if (Array.isArray(parsed.brigadesOnScene) && parsed.brigadesOnScene.length) {
-    state.incident.brigadesOnScene = [...new Set([...state.incident.brigadesOnScene, ...parsed.brigadesOnScene])];
-  }
-
-  syncIncidentFieldsToUi();
-  renderBrigadesOnScene();
-  updateBrigadeRole();
-  updateStructureVisibilityByIncidentType();
-  evaluateMvaAutoTrigger(parsed.upper || "");
-}
-
-/* =========================================================
-   INCIDENT RENDER
-   ========================================================= */
-
-function addBrigadeOnSceneFromUi() {
-  const select = el("brigadeOnSceneSelect");
-  const other = el("brigadeOnSceneOther");
-  let value = select.value;
-
+function addSceneBrigade() {
+  let value = el("sceneBrigadeSelect").value;
   if (!value) return;
 
-  if (value === "Other") {
-    value = normaliseSpacing(other.value).toUpperCase();
-    if (!value) return;
-  }
+  if (value === "Other") value = el("sceneBrigadeOther").value.trim().toUpperCase();
+  if (!value) return;
 
   if (!state.incident.brigadesOnScene.includes(value)) {
     state.incident.brigadesOnScene.push(value);
   }
 
-  select.value = "";
-  other.value = "";
-  other.classList.add("hidden");
-  renderBrigadesOnScene();
-  persistDraft();
+  el("sceneBrigadeSelect").value = "";
+  el("sceneBrigadeOther").value = "";
+  el("sceneBrigadeOther").classList.add("hidden");
+  renderSceneBrigades();
 }
 
-function removeBrigadeOnScene(code) {
-  state.incident.brigadesOnScene = state.incident.brigadesOnScene.filter((b) => b !== code);
-  renderBrigadesOnScene();
-  persistDraft();
-}
-
-function renderBrigadesOnScene() {
-  const container = el("brigadesOnSceneChips");
-  if (!container) return;
-  container.innerHTML = "";
+function renderSceneBrigades() {
+  const wrap = el("sceneBrigadeChips");
+  wrap.innerHTML = "";
 
   state.incident.brigadesOnScene.forEach((code) => {
     const chip = document.createElement("div");
     chip.className = "scene-chip";
-    chip.innerHTML = `<span>${escapeHtml(code)}</span><button type="button">×</button>`;
-    chip.querySelector("button").addEventListener("click", () => removeBrigadeOnScene(code));
-    container.appendChild(chip);
+    chip.innerHTML = `<span>${text(code)}</span><button type="button">×</button>`;
+    chip.querySelector("button").addEventListener("click", () => {
+      state.incident.brigadesOnScene = state.incident.brigadesOnScene.filter((x) => x !== code);
+      renderSceneBrigades();
+    });
+    wrap.appendChild(chip);
   });
 }
 
-function updateBrigadeRole() {
-  const code = (state.incident.brigadeCode || "").toUpperCase().trim();
-  state.incident.brigadeRole = code.startsWith("CONN") ? "Primary" : code ? "Support" : "";
-  if (el("brigadeRole")) el("brigadeRole").value = state.incident.brigadeRole;
-  persistDraft();
-}
+function addAgency() {
+  const type = el("agencyType").value;
+  if (!type) return;
 
-function updateFirsLabel() {
-  if (el("firsLabel")) {
-    el("firsLabel").textContent = state.incident.firsCode ? "FIRS Code" : "Paste FIRS";
-  }
-}
-
-function updateStructureVisibilityByIncidentType() {
-  const isStructure = state.incident.incidentType === "STRU";
-  if (!isStructure) {
-    state.structure.required = false;
-    const noRadio = document.querySelector('input[name="structureRequired"][value="no"]');
-    if (noRadio) noRadio.checked = true;
-    if (el("structureFormWrap")) el("structureFormWrap").classList.add("hidden");
-  }
-  persistDraft();
-}
-
-function renderIncidentFlagButtons() {
-  el("flagMembersBeforeBtn")?.classList.toggle("mini-chip-active", state.incident.flags.membersBefore);
-  el("flagAarRequiredBtn")?.classList.toggle("mini-chip-active", state.incident.flags.aarRequired);
-  el("flagHotDebriefBtn")?.classList.toggle("mini-chip-active", state.incident.flags.hotDebrief);
-}
-
-function evaluateMvaAutoTrigger(text) {
-  const hasMatch = CONFIG.MVA_KEYWORDS.some((keyword) => text.includes(keyword));
-  if (hasMatch) {
-    el("vehicleSection")?.classList.add("open");
-    if (state.vehicles.length === 0) setVehicleCount(1);
-  }
-}
-
-/* =========================================================
-   RESPONDER RENDER
-   ========================================================= */
-
-function renderResponders() {
-  renderConnewarreResponders();
-  renderMtdResponders();
-  renderOtherResponderLists();
-  updateHeaderOicStatus();
-}
-
-function renderConnewarreResponders() {
-  const container = el("connewarreResponders");
-  if (!container) return;
-
-  container.innerHTML = `<div class="responder-list-wrap"></div>`;
-  const list = container.firstElementChild;
-
-  state.responders.connewarre.forEach((responder, index) => {
-    list.appendChild(buildResponderRow(responder, index));
-  });
-
-  bindResponderEvents(container);
-}
-
-function renderMtdResponders() {
-  const container = el("mtdResponders");
-  if (!container) return;
-
-  container.innerHTML = `<div class="responder-list-wrap"></div>`;
-  const list = container.firstElementChild;
-
-  state.responders.mtd.forEach((responder, index) => {
-    list.appendChild(buildResponderRow(responder, index));
-  });
-
-  bindResponderEvents(container);
-}
-
-function renderOtherResponderLists() {
-  const directContainer = el("directRespondersContainer");
-  const stationContainer = el("stationRespondersContainer");
-  if (!directContainer || !stationContainer) return;
-
-  const direct = getAllResponders().filter((r) => r.name.trim() && r.destination === "Direct");
-  const station = getAllResponders().filter((r) => r.name.trim() && r.destination === "Station");
-
-  directContainer.innerHTML = direct.length
-    ? direct.map((r) => `<div class="simple-note">${escapeHtml(appendBrigadeIfNeeded(r))}${escapeHtml(buildResponderSuffix(r))}</div>`).join("")
-    : `<div class="simple-note">No direct responders selected.</div>`;
-
-  stationContainer.innerHTML = station.length
-    ? station.map((r) => `<div class="simple-note">${escapeHtml(appendBrigadeIfNeeded(r))}${escapeHtml(buildResponderSuffix(r))}</div>`).join("")
-    : `<div class="simple-note">No station responders selected.</div>`;
-}
-
-function buildResponderRow(responder, index) {
-  const wrapper = document.createElement("div");
-  const isConn = responder.group === "connewarre";
-  const badge = responder.group === "mtd" && responder.brigade
-    ? `<div class="responder-badge">${formatBrigadeName(responder.brigade)}</div>`
-    : "";
-
-  const destinations = isConn
-    ? CONFIG.RESPONSE_DESTINATIONS_CONNEWARRE
-    : CONFIG.RESPONSE_DESTINATIONS_MTD;
-
-  const destinationButtons = destinations.map((dest) => {
-    const active = responder.destination === dest;
-    return `
-      <button
-        type="button"
-        class="mini-chip ${active ? "mini-chip-active" : ""}"
-        data-action="destination"
-        data-responder-id="${responder.id}"
-        data-value="${dest}"
-        ${!responder.name.trim() ? "disabled" : ""}
-      >${dest}</button>
-    `;
-  }).join("");
-
-  const showTruckRoles = responder.destination === "T1" || responder.destination === "T2";
-  const roleButtons = showTruckRoles
-    ? CONFIG.TRUCK_ROLES.map((role) => {
-        const disabled = isTruckRoleUnavailable(responder, responder.destination, role);
-        const active = responder.truckRole === role;
-        return `
-          <button
-            type="button"
-            class="mini-chip ${active ? "mini-chip-active" : ""}"
-            data-action="truck-role"
-            data-responder-id="${responder.id}"
-            data-value="${role}"
-            ${disabled && !active ? "disabled" : ""}
-          >${role}</button>
-        `;
-      }).join("")
-    : "";
-
-  const flagsVisible = !!responder.destination;
-  const flagButtons = flagsVisible ? `
-    <button type="button" class="mini-chip ${responder.ba ? "mini-chip-active" : ""}" data-action="toggle-flag" data-flag="ba" data-responder-id="${responder.id}">BA</button>
-    <button type="button" class="mini-chip ${responder.injury ? "mini-chip-active" : ""}" data-action="toggle-flag" data-flag="injury" data-responder-id="${responder.id}">Injured</button>
-    <button type="button" class="mini-chip ${responder.oic ? "mini-chip-active" : ""}" data-action="toggle-flag" data-flag="oic" data-responder-id="${responder.id}">OIC</button>
-  ` : "";
-
-  const datalistHtml = isConn
-    ? getMemberOptionsHtml("CONN", responder.name)
-    : getCombinedMtdMemberOptionsHtml(responder.name);
-
-  const showAddMember = shouldShowAddMemberButton(responder, index);
-
-  wrapper.innerHTML = `
-    <div class="responder-row" data-responder-id="${responder.id}">
-      <div class="responder-row-top">
-        <div class="responder-name-wrap">
-          <input
-            type="text"
-            list="member-list-${responder.id}"
-            placeholder="Name"
-            data-action="name-input"
-            data-responder-id="${responder.id}"
-            value="${escapeHtml(responder.name)}"
-          />
-          <datalist id="member-list-${responder.id}">
-            ${datalistHtml}
-          </datalist>
-        </div>
-
-        ${badge}
-
-        <button
-          type="button"
-          class="tiny-btn"
-          data-action="remove-member"
-          data-group="${responder.group}"
-          data-responder-id="${responder.id}"
-        >Remove</button>
-      </div>
-
-      <div class="responder-stage">
-        <div class="stage-label">Response</div>
-        <div class="chip-row">${destinationButtons}</div>
-      </div>
-
-      ${showTruckRoles ? `
-        <div class="responder-stage">
-          <div class="stage-label">Truck role</div>
-          <div class="chip-row">${roleButtons}<div class="role-hint">Leave blank = Crew</div></div>
-        </div>
-      ` : ""}
-
-      ${flagsVisible ? `
-        <div class="responder-stage">
-          <div class="stage-label">Flags</div>
-          <div class="chip-row">${flagButtons}</div>
-        </div>
-      ` : ""}
-
-      ${showAddMember ? `<button type="button" class="secondary-btn compact-add-btn" data-action="add-member" data-group="${responder.group}">Add Member</button>` : ""}
-    </div>
-  `;
-
-  return wrapper.firstElementChild;
-}
-
-function bindResponderEvents(container) {
-  container.querySelectorAll('[data-action="name-input"]').forEach((input) => {
-    input.addEventListener("input", handleResponderNameTyping);
-    input.addEventListener("change", handleResponderNameCommit);
-    input.addEventListener("blur", handleResponderNameCommit);
-  });
-
-  container.querySelectorAll('[data-action="destination"]').forEach((btn) => {
-    btn.addEventListener("click", handleDestinationSelect);
-  });
-
-  container.querySelectorAll('[data-action="truck-role"]').forEach((btn) => {
-    btn.addEventListener("click", handleTruckRoleSelect);
-  });
-
-  container.querySelectorAll('[data-action="toggle-flag"]').forEach((btn) => {
-    btn.addEventListener("click", handleResponderFlagToggle);
-  });
-
-  container.querySelectorAll('[data-action="add-member"]').forEach((btn) => {
-    btn.addEventListener("click", handleAddMember);
-  });
-
-  container.querySelectorAll('[data-action="remove-member"]').forEach((btn) => {
-    btn.addEventListener("click", handleRemoveMember);
-  });
-}
-
-function handleResponderNameTyping(e) {
-  const responder = findResponderById(e.target.dataset.responderId);
-  if (!responder) return;
-  responder.name = e.target.value;
-}
-
-function handleResponderNameCommit(e) {
-  const responder = findResponderById(e.target.dataset.responderId);
-  if (!responder) return;
-
-  responder.name = e.target.value.trim();
-
-  if (responder.group === "connewarre") {
-    responder.brigade = "CONN";
-    responder.phone = getMemberPhone("CONN", responder.name) || "";
-  } else {
-    const inferred = inferMtdMemberRecord(responder.name);
-    responder.brigade = inferred?.brigade || responder.brigade || "";
-    responder.phone = inferred?.phone || responder.phone || "";
-  }
-
-  persistDraft();
-  renderResponders();
-}
-
-function handleDestinationSelect(e) {
-  const responder = findResponderById(e.target.dataset.responderId);
-  if (!responder) return;
-
-  responder.destination = e.target.dataset.value;
-  if (!(responder.destination === "T1" || responder.destination === "T2")) {
-    responder.truckRole = "";
-  }
-
-  persistDraft();
-  renderResponders();
-}
-
-function handleTruckRoleSelect(e) {
-  const responder = findResponderById(e.target.dataset.responderId);
-  if (!responder) return;
-
-  const role = e.target.dataset.value;
-  if (isTruckRoleUnavailable(responder, responder.destination, role)) return;
-
-  responder.truckRole = responder.truckRole === role ? "" : role;
-  persistDraft();
-  renderResponders();
-}
-
-function handleResponderFlagToggle(e) {
-  const responder = findResponderById(e.target.dataset.responderId);
-  if (!responder) return;
-
-  const flag = e.target.dataset.flag;
-
-  if (flag === "oic") {
-    if (!responder.oic) {
-      clearExistingOic();
-      responder.oic = true;
-      responder.phone = responder.phone || getResponderPhoneFallback(responder);
-    } else {
-      responder.oic = false;
-    }
-  } else {
-    responder[flag] = !responder[flag];
-  }
-
-  persistDraft();
-  renderResponders();
-}
-
-function handleAddMember(e) {
-  const group = e.target.dataset.group;
-  state.responders[group].push(createResponder(group));
-  persistDraft();
-  renderResponders();
-}
-
-function handleRemoveMember(e) {
-  const group = e.target.dataset.group;
-  const responderId = e.target.dataset.responderId;
-  state.responders[group] = state.responders[group].filter((r) => r.id !== responderId);
-
-  if (!state.responders[group].length) {
-    state.responders[group].push(createResponder(group));
-  }
-
-  persistDraft();
-  renderResponders();
-}
-
-function shouldShowAddMemberButton(responder, index) {
-  const list = state.responders[responder.group];
-  const isLast = index === list.length - 1;
-  return isLast && responder.name.trim() && responder.destination;
-}
-
-function isTruckRoleUnavailable(responder, truck, role) {
-  return getAllResponders().some((r) =>
-    r.id !== responder.id &&
-    r.destination === truck &&
-    r.truckRole === role
-  );
-}
-
-function clearExistingOic() {
-  getAllResponders().forEach((r) => {
-    r.oic = false;
-  });
-}
-
-function getResponderPhoneFallback(responder) {
-  if (responder.brigade) {
-    return getMemberPhone(responder.brigade, responder.name) || responder.phone || "";
-  }
-  return responder.phone || "";
-}
-
-function updateHeaderOicStatus() {
-  const node = el("oicStatus");
-  if (!node) return;
-
-  const oic = getAllResponders().find((r) => r.oic && r.name.trim());
-
-  if (!oic) {
-    node.textContent = "APPOINT OIC";
-    node.classList.add("oic-missing");
-    return;
-  }
-
-  oic.phone = oic.phone || getResponderPhoneFallback(oic);
-  node.textContent = `OIC: ${oic.name}${oic.phone ? " – " + oic.phone : ""}`;
-  node.classList.remove("oic-missing");
-}
-
-/* =========================================================
-   AGENCIES
-   ========================================================= */
-
-function addAgencyBlock(type) {
   state.agencies.push({
-    id: cryptoRandomId(),
+    id: uid(),
     type,
     otherName: "",
     officerName: "",
@@ -1349,205 +282,444 @@ function addAgencyBlock(type) {
     badgeNumber: "",
     comments: ""
   });
+
+  el("agencyType").value = "";
   renderAgencies();
-  persistDraft();
 }
 
 function renderAgencies() {
-  const container = el("agencyBlocks");
-  if (!container) return;
-
-  container.innerHTML = "";
+  const wrap = el("agencyBlocks");
+  wrap.innerHTML = "";
 
   state.agencies.forEach((agency) => {
     const block = document.createElement("div");
     block.className = "agency-block";
     block.innerHTML = `
-      <div class="responder-card-top">
-        <div class="responder-title">${escapeHtml(agency.type)}</div>
-        <button class="tiny-btn" type="button" data-remove-agency="${agency.id}">Remove</button>
+      <div class="row between">
+        <strong>${text(agency.type)}</strong>
+        <button class="tiny-btn" type="button">Remove</button>
       </div>
-
-      <div class="form-grid">
-        ${agency.type === "Other" ? `
-          <label>
-            Other Agency Name
-            <input type="text" data-agency-id="${agency.id}" data-field="otherName" value="${escapeHtml(agency.otherName)}" />
-          </label>
-        ` : ""}
-
-        <label>
-          Officer Name
-          <input type="text" data-agency-id="${agency.id}" data-field="officerName" value="${escapeHtml(agency.officerName)}" />
-        </label>
-
-        <label>
-          Contact Number
-          <input type="text" data-agency-id="${agency.id}" data-field="contactNumber" value="${escapeHtml(agency.contactNumber)}" />
-        </label>
-
-        <label>
-          Station
-          <input type="text" data-agency-id="${agency.id}" data-field="station" value="${escapeHtml(agency.station)}" />
-        </label>
-
-        <label>
-          Badge Number
-          <input type="text" data-agency-id="${agency.id}" data-field="badgeNumber" value="${escapeHtml(agency.badgeNumber)}" />
-        </label>
-
-        <label class="full-width">
-          Add Comments
-          <textarea rows="2" data-agency-id="${agency.id}" data-field="comments">${escapeHtml(agency.comments)}</textarea>
-        </label>
+      <div class="grid">
+        ${agency.type === "Other" ? `<label>Other Agency Name<input data-field="otherName" type="text" value="${text(agency.otherName)}"></label>` : ""}
+        <label>Officer Name<input data-field="officerName" type="text" value="${text(agency.officerName)}"></label>
+        <label>Contact Number<input data-field="contactNumber" type="text" value="${text(agency.contactNumber)}"></label>
+        <label>Station<input data-field="station" type="text" value="${text(agency.station)}"></label>
+        <label>Badge Number<input data-field="badgeNumber" type="text" value="${text(agency.badgeNumber)}"></label>
+        <label class="full">Comments<textarea data-field="comments" rows="2">${text(agency.comments)}</textarea></label>
       </div>
     `;
-    container.appendChild(block);
-  });
 
-  container.querySelectorAll("[data-agency-id]").forEach((field) => {
-    field.addEventListener("input", (e) => {
-      const agency = state.agencies.find((a) => a.id === e.target.dataset.agencyId);
-      if (!agency) return;
-      agency[e.target.dataset.field] = e.target.value;
-      persistDraft();
-    });
-  });
-
-  container.querySelectorAll("[data-remove-agency]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.agencies = state.agencies.filter((a) => a.id !== btn.dataset.removeAgency);
+    block.querySelector("button").addEventListener("click", () => {
+      state.agencies = state.agencies.filter((a) => a.id !== agency.id);
       renderAgencies();
-      persistDraft();
     });
+
+    block.querySelectorAll("[data-field]").forEach((field) => {
+      field.addEventListener("input", (e) => {
+        agency[e.target.dataset.field] = e.target.value;
+      });
+    });
+
+    wrap.appendChild(block);
   });
 }
 
-/* =========================================================
-   VEHICLES
-   ========================================================= */
+function toggleFlag(key, buttonId) {
+  state.incident.flags[key] = !state.incident.flags[key];
+  el(buttonId).classList.toggle("active", state.incident.flags[key]);
+}
 
-function renderVehicleBlocks() {
-  const container = el("vehicleBlocks");
-  if (!container) return;
+function renderResponders() {
+  renderResponderGroup("connewarre", "connewarreList", ["T1", "T2", "Station", "Direct"]);
+  renderResponderGroup("mtd", "mtdList", ["MTD P/T", "Station", "Direct"]);
+  updateOicBanner();
+}
 
-  container.innerHTML = "";
+function renderResponderGroup(groupKey, containerId, destinations) {
+  const wrap = el(containerId);
+  wrap.innerHTML = "";
 
-  state.vehicles.forEach((vehicle, index) => {
-    const block = document.createElement("div");
-    block.className = "vehicle-block";
-    block.innerHTML = `
-      <h4>Vehicle ${index + 1}</h4>
-      <div class="form-grid">
-        <label>
-          Vehicle Make
-          <input type="text" value="${escapeHtml(vehicle.make || "")}" />
-        </label>
+  state.responders[groupKey].forEach((person, index) => {
+    const card = document.createElement("div");
+    card.className = "responder-card";
 
-        <label>
-          Vehicle Model
-          <input type="text" value="${escapeHtml(vehicle.model || "")}" />
-        </label>
+    const listId = `list_${groupKey}_${person.id}`;
+    const options = groupKey === "connewarre"
+      ? state.memberLists.CONN
+      : [...state.memberLists.CONN, ...state.memberLists.GROV, ...state.memberLists.FRES];
 
-        <label>
-          Rego
-          <input type="text" value="${escapeHtml(vehicle.rego || "")}" />
-        </label>
+    const optionHtml = options.map((m) => {
+      const name = typeof m === "string" ? m : m.name;
+      return `<option value="${text(name)}"></option>`;
+    }).join("");
 
-        <label>
-          State
-          <input type="text" value="${escapeHtml(vehicle.state || "")}" />
-        </label>
+    const showTruckRole = person.destination === "T1" || person.destination === "T2";
 
-        <label>
-          Driver / Contact Name
-          <input type="text" value="${escapeHtml(vehicle.contactName || "")}" />
-        </label>
-
-        <label>
-          Driver / Contact Number
-          <input type="text" value="${escapeHtml(vehicle.contactNumber || "")}" />
-        </label>
+    card.innerHTML = `
+      <div class="responder-card-top">
+        <div>
+          <input type="text" list="${listId}" value="${text(person.name)}" placeholder="Name" />
+          <datalist id="${listId}">${optionHtml}</datalist>
+        </div>
+        <div class="badge">${text(person.brigade || (groupKey === "connewarre" ? "CONN" : ""))}</div>
+        <button class="tiny-btn" type="button">Remove</button>
       </div>
+
+      <div class="responder-stage">
+        <div class="stage-label">Response</div>
+        <div class="chips responder-destinations"></div>
+      </div>
+
+      ${showTruckRole ? `
+        <div class="responder-stage">
+          <div class="stage-label">Truck role</div>
+          <div class="chips responder-roles"></div>
+        </div>
+      ` : ""}
+
+      ${person.destination ? `
+        <div class="responder-stage">
+          <div class="stage-label">Flags</div>
+          <div class="chips responder-flags"></div>
+        </div>
+      ` : ""}
     `;
-    container.appendChild(block);
+
+    const nameInput = card.querySelector("input");
+    nameInput.addEventListener("input", (e) => {
+      person.name = e.target.value;
+      if (groupKey === "connewarre") {
+        person.brigade = "CONN";
+        const found = state.memberLists.CONN.find((m) => (typeof m === "string" ? m : m.name).toUpperCase() === person.name.toUpperCase());
+        person.phone = found && typeof found !== "string" ? found.phone || "" : "";
+      } else {
+        const found = findMemberAcrossBrigades(person.name);
+        person.brigade = found?.brigade || "";
+        person.phone = found?.phone || "";
+      }
+      renderResponders();
+    });
+
+    card.querySelector(".tiny-btn").addEventListener("click", () => {
+      state.responders[groupKey] = state.responders[groupKey].filter((x) => x.id !== person.id);
+      if (!state.responders[groupKey].length) state.responders[groupKey].push(createResponder(groupKey));
+      renderResponders();
+    });
+
+    const destWrap = card.querySelector(".responder-destinations");
+    destinations.forEach((dest) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `chip-btn ${person.destination === dest ? "active" : ""}`;
+      btn.textContent = dest;
+      btn.disabled = !person.name.trim();
+      btn.addEventListener("click", () => {
+        person.destination = dest;
+        if (dest !== "T1" && dest !== "T2") person.truckRole = "";
+        renderResponders();
+      });
+      destWrap.appendChild(btn);
+    });
+
+    if (showTruckRole) {
+      const roleWrap = card.querySelector(".responder-roles");
+      ["Driver", "CL"].forEach((role) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `chip-btn ${person.truckRole === role ? "active" : ""}`;
+        btn.textContent = role;
+        btn.addEventListener("click", () => {
+          if (person.truckRole === role) {
+            person.truckRole = "";
+          } else if (!roleTaken(person.destination, role, person.id)) {
+            person.truckRole = role;
+          }
+          renderResponders();
+        });
+        roleWrap.appendChild(btn);
+      });
+    }
+
+    if (person.destination) {
+      const flagsWrap = card.querySelector(".responder-flags");
+      [
+        ["BA", "ba"],
+        ["Injured", "injured"],
+        ["OIC", "oic"]
+      ].forEach(([label, key]) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `chip-btn ${person[key] ? "active" : ""}`;
+        btn.textContent = label;
+        btn.addEventListener("click", () => {
+          if (key === "oic") clearAllOic();
+          person[key] = key === "oic" ? !person[key] : !person[key];
+          renderResponders();
+        });
+        flagsWrap.appendChild(btn);
+      });
+    }
+
+    wrap.appendChild(card);
+
+    const list = state.responders[groupKey];
+    const isLast = index === list.length - 1;
+    if (isLast && person.name.trim() && person.destination) {
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "secondary-btn";
+      addBtn.textContent = "Add Member";
+      addBtn.addEventListener("click", () => {
+        state.responders[groupKey].push(createResponder(groupKey));
+        renderResponders();
+      });
+      wrap.appendChild(addBtn);
+    }
   });
 }
 
-function renderVehicles() {
-  renderVehicleBlocks();
+function findMemberAcrossBrigades(name) {
+  const target = String(name || "").trim().toUpperCase();
+  for (const key of ["CONN", "GROV", "FRES"]) {
+    const found = state.memberLists[key].find((m) => {
+      const n = (typeof m === "string" ? m : m.name).toUpperCase();
+      return n === target;
+    });
+    if (found) {
+      return {
+        brigade: key,
+        phone: typeof found === "string" ? "" : found.phone || ""
+      };
+    }
+  }
+  return null;
 }
 
-/* =========================================================
-   SAVED REPORTS
-   ========================================================= */
+function roleTaken(destination, role, currentId) {
+  return [...state.responders.connewarre, ...state.responders.mtd].some((r) => {
+    return r.id !== currentId && r.destination === destination && r.truckRole === role;
+  });
+}
 
-function saveReportSummary() {
-  const title = buildReportTitle();
-  const body = state.ui.reportPreview || generateReport();
+function clearAllOic() {
+  [...state.responders.connewarre, ...state.responders.mtd].forEach((r) => {
+    r.oic = false;
+  });
+}
+
+function updateOicBanner() {
+  const all = [...state.responders.connewarre, ...state.responders.mtd];
+  const oic = all.find((r) => r.oic && r.name.trim());
+
+  if (!oic) {
+    el("oicBanner").textContent = "APPOINT OIC";
+    el("oicBanner").classList.add("missing");
+    return;
+  }
+
+  el("oicBanner").textContent = `OIC: ${oic.name}${oic.phone ? " – " + oic.phone : ""}`;
+  el("oicBanner").classList.remove("missing");
+}
+
+function buildReport() {
+  const all = [...state.responders.connewarre, ...state.responders.mtd];
+  const oic = all.find((r) => r.oic && r.name.trim());
+
+  const lines = [];
+  lines.push("Job Details");
+  pushLine(lines, "Event Number", state.incident.eventNumber);
+  pushLine(lines, "Pager Date", state.incident.pagerDate);
+  pushLine(lines, "Pager Time", state.incident.pagerTime);
+  pushLine(lines, "Brigade Code", state.incident.brigadeCode);
+  pushLine(lines, "Primary / Support", state.incident.brigadeRole);
+  pushLine(lines, "Incident Type / Class", state.incident.incidentType);
+  pushLine(lines, "Code Level", state.incident.codeLevel);
+  pushLine(lines, "Address", state.incident.address);
+  pushLine(lines, "FIRS Code", state.incident.firsCode);
+  pushLine(lines, "Brigades on Scene", state.incident.brigadesOnScene.join(", "));
+
+  if (oic) {
+    lines.push("");
+    lines.push("OIC");
+    pushLine(lines, "Name", oic.name);
+    pushLine(lines, "Phone", oic.phone);
+  }
+
+  const appliances = [
+    ["Conn T1", "T1"],
+    ["Conn T2", "T2"],
+    ["MTD P/T", "MTD P/T"]
+  ];
+
+  const applianceSections = [];
+  appliances.forEach(([title, code]) => {
+    const crew = all.filter((r) => r.destination === code && r.name.trim());
+    if (crew.length) {
+      applianceSections.push(title);
+      crew.forEach((r) => {
+        applianceSections.push(`- ${r.name}${responderSuffix(r)} | ${r.truckRole || "Crew"}`);
+      });
+    }
+  });
+
+  if (applianceSections.length) {
+    lines.push("");
+    lines.push("Appliances");
+    lines.push(...applianceSections);
+  }
+
+  const direct = all.filter((r) => r.destination === "Direct" && r.name.trim());
+  if (direct.length) {
+    lines.push("");
+    lines.push("Direct Responders");
+    direct.forEach((r) => lines.push(`- ${r.name}${responderSuffix(r)}`));
+  }
+
+  const station = all.filter((r) => r.destination === "Station" && r.name.trim());
+  if (station.length) {
+    lines.push("");
+    lines.push("Station Responders");
+    station.forEach((r) => lines.push(`- ${r.name}${responderSuffix(r)}`));
+  }
+
+  if (state.agencies.length) {
+    lines.push("");
+    lines.push("Agencies");
+    state.agencies.forEach((a, i) => {
+      lines.push(`${i + 1}. ${a.type === "Other" ? (a.otherName || "Other") : a.type}`);
+      pushLine(lines, "Officer", a.officerName);
+      pushLine(lines, "Contact", a.contactNumber);
+      pushLine(lines, "Station", a.station);
+      pushLine(lines, "Badge", a.badgeNumber);
+      pushLine(lines, "Comments", a.comments);
+    });
+  }
+
+  const firstAgency = state.incident.firstAgency === "Other" ? state.incident.firstAgencyOther : state.incident.firstAgency;
+  if (firstAgency) {
+    lines.push("");
+    lines.push("First Agency On Scene");
+    lines.push(firstAgency);
+  }
+
+  if (state.incident.notes.trim()) {
+    lines.push("");
+    lines.push("Notes");
+    lines.push(state.incident.notes.trim());
+  }
+
+  const flags = [];
+  if (state.incident.flags.membersBefore) flags.push("Members before 1st appliance");
+  if (state.incident.flags.aar) flags.push("AAR required");
+  if (state.incident.flags.hotDebrief) flags.push("Hot debrief conducted");
+
+  if (flags.length) {
+    lines.push("");
+    lines.push("Incident Flags");
+    flags.forEach((f) => lines.push(`- ${f}`));
+  }
+
+  lines.push("");
+  lines.push("Sign-off");
+  pushLine(lines, "Name", state.profile.name);
+  pushLine(lines, "Brigade", state.profile.brigade);
+  pushLine(lines, "CFA Member Number", state.profile.memberNumber);
+  pushLine(lines, "Contact Number", state.profile.contactNumber);
+
+  return lines.join("\n");
+}
+
+function responderSuffix(r) {
+  const flags = [];
+  if (r.oic) flags.push("OIC");
+  if (r.ba) flags.push("BA");
+  if (r.injured) flags.push("Injured");
+  return flags.length ? " – " + flags.join(", ") : "";
+}
+
+function pushLine(lines, label, value) {
+  if (String(value || "").trim()) lines.push(`${label}: ${value}`);
+}
+
+function finishReport() {
+  const all = [...state.responders.connewarre, ...state.responders.mtd];
+  const hasResponder = all.some((r) => r.name.trim());
+  const hasOic = all.some((r) => r.oic && r.name.trim());
+
+  const needsOic = state.incident.brigadeCode.trim().toUpperCase().startsWith("CONN");
+
+  if (!hasResponder) {
+    el("validationText").textContent = "At least one responder must be entered.";
+    el("finishActions").classList.add("hidden");
+    return;
+  }
+
+  if (needsOic && !hasOic) {
+    el("validationText").textContent = "OIC must be selected for primary Connewarre jobs.";
+    el("finishActions").classList.add("hidden");
+    return;
+  }
+
+  el("validationText").textContent = "Report ready.";
+  el("reportPreview").value = buildReport();
+  el("finishActions").classList.remove("hidden");
+}
+
+function saveCurrentReport() {
+  const title = `${state.incident.eventNumber || "NO_EVENT"} – ${state.incident.incidentType || "UNKNOWN"} – ${state.incident.address || "NO ADDRESS"}`;
+  const body = buildReport();
 
   state.savedReports.unshift({
-    id: cryptoRandomId(),
+    id: uid(),
     title,
     body,
     createdAt: new Date().toISOString()
   });
 
-  state.savedReports = state.savedReports.slice(0, CONFIG.MAX_REPORTS);
-  saveSavedReports();
-  renderSavedReports();
-}
-
-function deleteSavedReport(id) {
-  state.savedReports = state.savedReports.filter((r) => r.id !== id);
+  state.savedReports = state.savedReports.slice(0, 10);
   saveSavedReports();
   renderSavedReports();
 }
 
 function renderSavedReports() {
-  const container = el("savedReportsList");
-  if (!container) return;
-
-  container.innerHTML = "";
+  const wrap = el("savedReports");
+  wrap.innerHTML = "";
 
   if (!state.savedReports.length) {
-    container.innerHTML = `<div class="saved-report-item">No saved reports yet.</div>`;
+    wrap.innerHTML = `<div class="saved-item">No saved reports yet.</div>`;
     return;
   }
 
-  state.savedReports.forEach((report) => {
+  state.savedReports.forEach((r) => {
     const item = document.createElement("div");
-    item.className = "saved-report-item";
+    item.className = "saved-item";
     item.innerHTML = `
-      <div><strong>${escapeHtml(report.title)}</strong></div>
-      <div>${new Date(report.createdAt).toLocaleString("en-AU")}</div>
-      <div class="saved-report-actions">
-        <button class="tiny-btn" type="button" data-load-report="${report.id}">Load Preview</button>
-        <button class="tiny-btn" type="button" data-delete-report="${report.id}">Delete</button>
+      <strong>${text(r.title)}</strong>
+      <div class="help-text">${new Date(r.createdAt).toLocaleString("en-AU")}</div>
+      <div class="saved-actions">
+        <button class="tiny-btn" type="button">Load Preview</button>
+        <button class="tiny-btn" type="button">Delete</button>
       </div>
     `;
-    container.appendChild(item);
-  });
 
-  container.querySelectorAll("[data-load-report]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const report = state.savedReports.find((r) => r.id === btn.dataset.loadReport);
-      if (!report) return;
-      el("reportPreview").value = report.body;
+    const [loadBtn, delBtn] = item.querySelectorAll("button");
+
+    loadBtn.addEventListener("click", () => {
+      el("reportPreview").value = r.body;
+      showPage("sendPage");
     });
-  });
 
-  container.querySelectorAll("[data-delete-report]").forEach((btn) => {
-    btn.addEventListener("click", () => deleteSavedReport(btn.dataset.deleteReport));
+    delBtn.addEventListener("click", () => {
+      state.savedReports = state.savedReports.filter((x) => x.id !== r.id);
+      saveSavedReports();
+      renderSavedReports();
+    });
+
+    wrap.appendChild(item);
   });
 }
 
-/* =========================================================
-   PROFILE MODAL
-   ========================================================= */
-
-function openSettingsModal() {
-  if (!el("settingsModal")) return;
+function openSettings() {
   el("profileName").value = state.profile.name;
   el("profileMemberNumber").value = state.profile.memberNumber;
   el("profileContactNumber").value = state.profile.contactNumber;
@@ -1556,8 +728,8 @@ function openSettingsModal() {
   el("settingsModal").classList.remove("hidden");
 }
 
-function closeSettingsModal() {
-  el("settingsModal")?.classList.add("hidden");
+function closeSettings() {
+  el("settingsModal").classList.add("hidden");
 }
 
 function saveProfileFromUi() {
@@ -1567,348 +739,38 @@ function saveProfileFromUi() {
   state.profile.email = el("profileEmail").value.trim();
   state.profile.brigade = el("profileBrigade").value.trim() || "Connewarre";
   saveProfile();
-  closeSettingsModal();
-}
-
-/* =========================================================
-   REPORTS / VALIDATION
-   ========================================================= */
-
-function validateResponders() {
-  return getAllResponders().some((r) => r.name.trim());
-}
-
-function validateReportReady() {
-  const messages = [];
-  if (!validateResponders()) messages.push("At least one responder must be entered.");
-  if (isPrimaryConnJob() && !getAllResponders().some((r) => r.oic && r.name.trim())) {
-    messages.push("OIC must be selected for primary Connewarre jobs.");
-  }
-  return { valid: messages.length === 0, messages };
-}
-
-function generateReport() {
-  collectStructureData();
-  collectHoseUse();
-
-  const sections = [
-    buildJobSection(),
-    buildOicSection(),
-    buildApplianceSections(),
-    buildResponderSections(),
-    formatStructureReport(),
-    buildVehicleSection(),
-    buildFirstAgencySection(),
-    formatAgencySection(),
-    buildHoseSection(),
-    buildNotesSection(),
-    buildIncidentFlagsSection(),
-    buildSignoff()
-  ].filter(Boolean);
-
-  const report = sections.join("\n\n").trim();
-  state.ui.reportPreview = report;
-  if (el("reportPreview")) el("reportPreview").value = report;
-  return report;
-}
-
-function buildJobSection() {
-  return [
-    "Job Details",
-    lineIfValue("Event Number", state.incident.eventNumber),
-    lineIfValue("Pager Date", formatDateForReport(state.incident.pagerDate)),
-    lineIfValue("Pager Time", state.incident.pagerTime),
-    lineIfValue("Brigade Code", state.incident.brigadeCode),
-    lineIfValue("Primary / Support", state.incident.brigadeRole),
-    lineIfValue("Incident Type / Class", state.incident.incidentType),
-    lineIfValue("Code Level", state.incident.codeLevel),
-    lineIfValue("Address", state.incident.address),
-    lineIfValue("FIRS Code", state.incident.firsCode),
-    lineIfValue("Brigades on Scene", state.incident.brigadesOnScene.join(", "))
-  ].filter(Boolean).join("\n");
-}
-
-function buildOicSection() {
-  const oic = getAllResponders().find((r) => r.oic && r.name.trim());
-  if (!oic) return "";
-  return [
-    "OIC",
-    lineIfValue("Name", appendBrigadeIfNeeded(oic)),
-    lineIfValue("Phone", oic.phone)
-  ].filter(Boolean).join("\n");
-}
-
-function buildApplianceSections() {
-  const grouped = {};
-
-  getAllResponders()
-    .filter((r) => r.name.trim() && ["T1", "T2", "MTD P/T"].includes(r.destination))
-    .forEach((r) => {
-      if (!grouped[r.destination]) grouped[r.destination] = [];
-      grouped[r.destination].push(r);
-    });
-
-  const ordered = ["T1", "T2", "MTD P/T"];
-  const sectionBlocks = [];
-
-  ordered.forEach((key) => {
-    if (!grouped[key]?.length) return;
-    const title = key === "T1" ? "Conn T1" : key === "T2" ? "Conn T2" : "MTD P/T";
-    const lines = [title];
-    grouped[key].forEach((r) => {
-      lines.push(`- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)} | ${r.truckRole || "Crew"}`);
-    });
-    sectionBlocks.push(lines.join("\n"));
-  });
-
-  return sectionBlocks.length ? ["Appliances", ...sectionBlocks].join("\n") : "";
-}
-
-function buildResponderSections() {
-  const direct = getAllResponders()
-    .filter((r) => r.name.trim() && r.destination === "Direct")
-    .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}`);
-
-  const station = getAllResponders()
-    .filter((r) => r.name.trim() && r.destination === "Station")
-    .map((r) => `- ${appendBrigadeIfNeeded(r)}${buildResponderSuffix(r)}`);
-
-  const parts = [];
-  if (direct.length) parts.push(["Direct Responders", ...direct].join("\n"));
-  if (station.length) parts.push(["Station Responders", ...station].join("\n"));
-  return parts.join("\n\n");
-}
-
-function buildVehicleSection() {
-  const vehicles = state.vehicles.filter((v) => v.make || v.model || v.rego || v.contactName);
-  if (!vehicles.length) return "";
-
-  const lines = ["Vehicle Section"];
-  vehicles.forEach((v, index) => {
-    lines.push(`Vehicle ${index + 1}`);
-    lines.push(...[
-      lineIfValue("Make", v.make === "Other" ? v.makeOther : v.make),
-      lineIfValue("Model", v.model),
-      lineIfValue("Rego", v.rego),
-      lineIfValue("State", v.state),
-      lineIfValue("Driver / Contact", v.contactName),
-      lineIfValue("Contact Number", v.contactNumber),
-      lineIfValue("Occupants", v.occupants),
-      lineIfValue("Trapped", v.trapped),
-      lineIfValue("Airbags Deployed", v.airbagsDeployed),
-      lineIfValue("Vehicle Stability", v.stability),
-      lineIfValue("Vehicle Type / Propulsion", v.propulsion === "Other" ? v.propulsionOther : v.propulsion)
-    ].filter(Boolean));
-  });
-
-  return lines.join("\n");
-}
-
-function buildFirstAgencySection() {
-  if (!state.incident.firstAgency) return "";
-  const value = state.incident.firstAgency === "Other" ? state.incident.firstAgencyOther : state.incident.firstAgency;
-  if (!value) return "";
-  return ["First Agency On Scene", value].join("\n");
-}
-
-function buildHoseSection() {
-  const used = Object.entries(state.hoseUse).filter(([, qty]) => String(qty).trim() !== "");
-  if (!used.length) return "";
-  return ["Hose Use", ...used.map(([type, qty]) => `${type}: ${qty}`)].join("\n");
-}
-
-function buildNotesSection() {
-  return state.incident.notes.trim() ? ["Notes", state.incident.notes.trim()].join("\n") : "";
-}
-
-function buildIncidentFlagsSection() {
-  const flags = [];
-  if (state.incident.flags.membersBefore) flags.push("Members before 1st appliance");
-  if (state.incident.flags.aarRequired) flags.push("AAR required");
-  if (state.incident.flags.hotDebrief) flags.push("Hot debrief conducted");
-  return flags.length ? ["Incident Flags", ...flags.map((f) => `- ${f}`)].join("\n") : "";
-}
-
-function buildSignoff() {
-  return [
-    "Sign-off",
-    lineIfValue("Name", state.profile.name),
-    lineIfValue("Brigade", state.profile.brigade),
-    lineIfValue("CFA Member Number", state.profile.memberNumber),
-    lineIfValue("Contact Number", state.profile.contactNumber)
-  ].filter(Boolean).join("\n");
-}
-
-function formatAgencySection() {
-  if (!state.agencies.length) return "";
-  const lines = ["Agencies"];
-  state.agencies.forEach((agency, index) => {
-    const title = agency.type === "Other" ? (agency.otherName || "Other") : agency.type;
-    lines.push(`${index + 1}. ${title}`);
-    lines.push(...[
-      lineIfValue("Officer", agency.officerName),
-      lineIfValue("Contact", agency.contactNumber),
-      lineIfValue("Station", agency.station),
-      lineIfValue("Badge", agency.badgeNumber),
-      lineIfValue("Comments", agency.comments)
-    ].filter(Boolean));
-  });
-  return lines.join("\n");
-}
-
-/* =========================================================
-   SEND / PAGE UI
-   ========================================================= */
-
-function handleFinish() {
-  const validation = validateReportReady();
-  if (!validation.valid) {
-    setStatus("validationStatus", validation.messages.join(" "));
-    el("finishActions")?.classList.add("hidden");
-    return;
-  }
-
-  setStatus("validationStatus", "Report ready.");
-  generateReport();
-  updateQuietHoursWarning();
-  el("finishActions")?.classList.remove("hidden");
-}
-
-async function sendSms() {
-  const report = generateReport();
-  try {
-    await navigator.clipboard.writeText(report);
-  } catch (error) {
-    console.warn("Clipboard copy failed", error);
-  }
-  window.location.href = `sms:?body=${encodeURIComponent(report)}`;
+  closeSettings();
 }
 
 function sendEmail() {
-  const report = generateReport();
-  const subject = buildReportTitle();
-  const email = state.profile.email || "";
-  window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(report)}`;
+  const subject = `${state.incident.eventNumber || "NO_EVENT"} – ${state.incident.incidentType || "UNKNOWN"} – ${state.incident.address || "NO ADDRESS"}`;
+  const body = buildReport();
+  window.location.href = `mailto:${encodeURIComponent(state.profile.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-function saveReportLocally() {
-  generateReport();
-  saveReportSummary();
+async function sendSms() {
+  const body = buildReport();
+  try {
+    await navigator.clipboard.writeText(body);
+  } catch {}
+  window.location.href = `sms:?body=${encodeURIComponent(body)}`;
 }
 
 function showPage(pageId) {
   state.ui.currentPage = pageId;
-  document.querySelectorAll(".page").forEach((page) => {
-    page.classList.toggle("active", page.id === pageId);
-  });
-
-  document.querySelectorAll(".nav-btn[data-page]").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.page === pageId);
-  });
+  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("active", p.id === pageId));
+  document.querySelectorAll(".tab-btn[data-page]").forEach((b) => b.classList.toggle("active", b.dataset.page === pageId));
 
   if (pageId === "sendPage") {
-    const validation = validateReportReady();
-    setStatus("validationStatus", validation.valid ? "Ready to finish." : validation.messages.join(" "));
-    generateReport();
-    updateQuietHoursWarning();
+    el("reportPreview").value = buildReport();
   }
-
-  persistDraft();
 }
 
-function updateQuietHoursWarning() {
-  const warning = el("quietHoursWarning");
-  if (!warning) return;
-  const hour = new Date().getHours();
-  const quiet = hour >= CONFIG.QUIET_HOURS.start || hour < CONFIG.QUIET_HOURS.end;
-  warning.classList.toggle("hidden", !quiet);
-}
-
-/* =========================================================
-   SYNC UI
-   ========================================================= */
-
-function syncIncidentFieldsToUi() {
-  if (el("eventNumber")) el("eventNumber").value = state.incident.eventNumber;
-  if (el("pagerDate")) el("pagerDate").value = state.incident.pagerDate;
-  if (el("pagerTime")) el("pagerTime").value = state.incident.pagerTime;
-  if (el("brigadeCode")) el("brigadeCode").value = state.incident.brigadeCode;
-  if (el("brigadeRole")) el("brigadeRole").value = state.incident.brigadeRole;
-  if (el("incidentType")) el("incidentType").value = state.incident.incidentType;
-  if (el("codeLevel")) el("codeLevel").value = state.incident.codeLevel;
-  if (el("address")) el("address").value = state.incident.address;
-  if (el("firsCode")) el("firsCode").value = state.incident.firsCode;
-  if (el("notes")) el("notes").value = state.incident.notes;
-  if (el("firstAgencySelect")) el("firstAgencySelect").value = state.incident.firstAgency;
-  if (el("firstAgencyOther")) {
-    el("firstAgencyOther").value = state.incident.firstAgencyOther;
-    el("firstAgencyOther").classList.toggle("hidden", state.incident.firstAgency !== "Other");
-  }
-
-  updateFirsLabel();
-  renderIncidentFlagButtons();
-  renderPagerPreviews();
-}
-
-function syncAllFieldsToUi() {
-  syncIncidentFieldsToUi();
-
-  const structureRadio = document.querySelector(`input[name="structureRequired"][value="${state.structure.required ? "yes" : "no"}"]`);
-  if (structureRadio) structureRadio.checked = true;
-  if (el("structureFormWrap")) el("structureFormWrap").classList.toggle("hidden", !state.structure.required);
-
-  [
-    "structurePropertyType", "structureLevels", "structureOccupancy", "structureConstruction",
-    "fireAreaOrigin", "fireAreaExtent", "fireAreaComments",
-    "fireFuelLoad", "fireBehaviour", "fireMaterialComments",
-    "detectionType", "alarmActivated", "detectionComments",
-    "suppressionType", "suppressionWorked", "suppressionComments",
-    "portableExtinguisher", "portableOther", "portableComments"
-  ].forEach((id) => {
-    if (el(id)) {
-      const key = id
-        .replace("structure", "")
-        .replace("fire", "fire")
-        .replace("portable", "portable");
-    }
-  });
-
-  if (el("structurePropertyType")) el("structurePropertyType").value = state.structure.propertyType;
-  if (el("structureLevels")) el("structureLevels").value = state.structure.levels;
-  if (el("structureOccupancy")) el("structureOccupancy").value = state.structure.occupancy;
-  if (el("structureConstruction")) el("structureConstruction").value = state.structure.construction;
-  if (el("fireAreaOrigin")) el("fireAreaOrigin").value = state.structure.fireAreaOrigin;
-  if (el("fireAreaExtent")) el("fireAreaExtent").value = state.structure.fireAreaExtent;
-  if (el("fireAreaComments")) el("fireAreaComments").value = state.structure.fireAreaComments;
-  if (el("fireFuelLoad")) el("fireFuelLoad").value = state.structure.fireFuelLoad;
-  if (el("fireBehaviour")) el("fireBehaviour").value = state.structure.fireBehaviour;
-  if (el("fireMaterialComments")) el("fireMaterialComments").value = state.structure.fireMaterialComments;
-  if (el("detectionType")) el("detectionType").value = state.structure.detectionType;
-  if (el("alarmActivated")) el("alarmActivated").value = state.structure.alarmActivated;
-  if (el("detectionComments")) el("detectionComments").value = state.structure.detectionComments;
-  if (el("suppressionType")) el("suppressionType").value = state.structure.suppressionType;
-  if (el("suppressionWorked")) el("suppressionWorked").value = state.structure.suppressionWorked;
-  if (el("suppressionComments")) el("suppressionComments").value = state.structure.suppressionComments;
-  if (el("portableExtinguisher")) el("portableExtinguisher").value = state.structure.portableExtinguisher;
-  if (el("portableOther")) el("portableOther").value = state.structure.portableOther;
-  if (el("portableComments")) el("portableComments").value = state.structure.portableComments;
-
-  if (el("hose64")) el("hose64").value = state.hoseUse["64"];
-  if (el("hose38")) el("hose38").value = state.hoseUse["38"];
-  if (el("hose25")) el("hose25").value = state.hoseUse["25"];
-  if (el("hoseLiveReel")) el("hoseLiveReel").value = state.hoseUse["Live Reel"];
-
-  renderBrigadesOnScene();
-}
-
-/* =========================================================
-   SERVICE WORKER
-   ========================================================= */
-
-function registerServiceWorker() {
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("service-worker.js").catch((error) => {
-      console.warn("SW registration failed", error);
-    });
-  }
+function renderEverything() {
+  el("brigadeRole").value = state.incident.brigadeRole;
+  renderSceneBrigades();
+  renderAgencies();
+  renderResponders();
+  renderSavedReports();
+  showPage(state.ui.currentPage);
 }
