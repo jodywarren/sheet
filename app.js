@@ -132,6 +132,20 @@ const state = {
 
 document.addEventListener("DOMContentLoaded", init);
 
+function ensureMinimumResponderRows() {
+  if (!state.responders) {
+    state.responders = {};
+  }
+
+  if (!Array.isArray(state.responders.connewarre) || !state.responders.connewarre.length) {
+    state.responders.connewarre = [createResponder("connewarre")];
+  }
+
+  if (!Array.isArray(state.responders.mtd) || !state.responders.mtd.length) {
+    state.responders.mtd = [createResponder("mtd")];
+  }
+}
+
 async function init() {
   try {
     await loadMemberLists();
