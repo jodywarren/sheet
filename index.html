@@ -17,7 +17,7 @@
         <img src="./connewarre-logo.png" alt="Connewarre logo" class="logo" />
         <div>
           <h1>CONNEWARRE FIRE BRIGADE TURNOUT SHEET</h1>
-          <p>Jody Tuuta © 2026 · Version <span id="appVersionText">2.0.2</span></p>
+          <p>Jody Tuuta © 2026 · Version <span id="appVersionText">2.0.3</span></p>
         </div>
       </div>
 
@@ -35,7 +35,7 @@
     </nav>
 
     <section class="status-wrap">
-      <div id="connectionBanner" class="status-banner online">Online</div>
+      <div id="connectionBanner" class="status-banner online centered">Online</div>
 
       <div id="draftRestoreBanner" class="status-banner info hidden">
         <span id="draftRestoreText">Draft restored.</span>
@@ -87,7 +87,7 @@
             <label>Event Number<input id="eventNumber" type="text" autocomplete="off" /></label>
             <label>Pager Date<input id="pagerDate" type="date" /></label>
             <label>Pager Time<input id="pagerTime" type="time" /></label>
-            <label>Brigade Code<input id="brigadeCode" type="text" placeholder="CONN1" autocomplete="off" /></label>
+            <label>Brigade Area Code<input id="brigadeCode" type="text" placeholder="CONN1" autocomplete="off" /></label>
             <label>Primary / Support<input id="brigadeRole" type="text" readonly /></label>
             <label>
               Incident Type / Class
@@ -101,7 +101,6 @@
               </select>
             </label>
             <label class="full">Pager Details<textarea id="pagerDetails" rows="5"></textarea></label>
-            <label class="full">Address<textarea id="address" rows="2"></textarea></label>
             <label class="full">Actual Location<input id="actualLocation" type="text" autocomplete="off" /></label>
             <label>Control Name<input id="controlName" type="text" autocomplete="off" placeholder="Reeve Ave" /></label>
             <label>
@@ -205,55 +204,57 @@
             </label>
           </div>
 
-          <div class="section">
-            <h3>Hoses Used</h3>
-            <div class="grid">
-              <label>
-                64
-                <select id="hose64Qty">
-                  <option value="0">None</option>
-                  <option value="1">1x64</option>
-                  <option value="2">2x64</option>
-                  <option value="3">3x64</option>
-                  <option value="4">4x64</option>
-                  <option value="5">5x64</option>
-                  <option value="6">6x64</option>
-                </select>
-              </label>
-              <label>
-                38
-                <select id="hose38Qty">
-                  <option value="0">None</option>
-                  <option value="1">1x38</option>
-                  <option value="2">2x38</option>
-                  <option value="3">3x38</option>
-                  <option value="4">4x38</option>
-                  <option value="5">5x38</option>
-                  <option value="6">6x38</option>
-                </select>
-              </label>
-              <label>
-                25
-                <select id="hose25Qty">
-                  <option value="0">None</option>
-                  <option value="1">1x25</option>
-                  <option value="2">2x25</option>
-                  <option value="3">3x25</option>
-                  <option value="4">4x25</option>
-                  <option value="5">5x25</option>
-                  <option value="6">6x25</option>
-                </select>
-              </label>
-              <label>
-                Other
-                <select id="hoseOtherType">
-                  <option value="">None</option>
-                  <option value="Live Reel">Live Reel</option>
-                  <option value="High Pressure">High Pressure</option>
-                  <option value="Bucket">Bucket</option>
-                  <option value="Garden Hose">Garden Hose</option>
-                </select>
-              </label>
+          <div class="section compact-section">
+            <button id="toggleHosesBtn" class="secondary-btn compact-toggle" type="button">Hoses Used</button>
+            <div id="hosesPanel" class="hidden">
+              <div class="grid top-gap">
+                <label>
+                  64
+                  <select id="hose64Qty">
+                    <option value="0">None</option>
+                    <option value="1">1x64</option>
+                    <option value="2">2x64</option>
+                    <option value="3">3x64</option>
+                    <option value="4">4x64</option>
+                    <option value="5">5x64</option>
+                    <option value="6">6x64</option>
+                  </select>
+                </label>
+                <label>
+                  38
+                  <select id="hose38Qty">
+                    <option value="0">None</option>
+                    <option value="1">1x38</option>
+                    <option value="2">2x38</option>
+                    <option value="3">3x38</option>
+                    <option value="4">4x38</option>
+                    <option value="5">5x38</option>
+                    <option value="6">6x38</option>
+                  </select>
+                </label>
+                <label>
+                  25
+                  <select id="hose25Qty">
+                    <option value="0">None</option>
+                    <option value="1">1x25</option>
+                    <option value="2">2x25</option>
+                    <option value="3">3x25</option>
+                    <option value="4">4x25</option>
+                    <option value="5">5x25</option>
+                    <option value="6">6x25</option>
+                  </select>
+                </label>
+                <label>
+                  Other
+                  <select id="hoseOtherType">
+                    <option value="">None</option>
+                    <option value="Live Reel">Live Reel</option>
+                    <option value="High Pressure">High Pressure</option>
+                    <option value="Bucket">Bucket</option>
+                    <option value="Garden Hose">Garden Hose</option>
+                  </select>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -421,8 +422,8 @@
 
       <div class="grid">
         <label>Name<input id="profileName" type="text" autocomplete="name" /></label>
-        <label>CFA Member Number<input id="profileMemberNumber" type="text" autocomplete="off" /></label>
-        <label>Contact Number<input id="profileContactNumber" type="text" autocomplete="tel" /></label>
+        <label>CFA Member Number<input id="profileMemberNumber" type="text" inputmode="numeric" autocomplete="off" /></label>
+        <label>Contact Number<input id="profileContactNumber" type="text" inputmode="tel" autocomplete="tel" /></label>
         <label>Email<input id="profileEmail" type="email" autocomplete="email" /></label>
         <label>Brigade<input id="profileBrigade" type="text" value="Connewarre" autocomplete="organization" /></label>
       </div>
