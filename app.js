@@ -137,6 +137,65 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function getWeatherConflicts() {
+  return {
+    Hot: ["Cold"],
+    Cold: ["Hot"],
+    Calm: ["Windy", "Very Windy", "Stormy"],
+    Windy: ["Calm"],
+    "Very Windy": ["Calm"],
+    Sunny: ["Overcast", "Cloudy", "Rain", "Showers", "Stormy"],
+    Overcast: ["Sunny"],
+    Cloudy: ["Sunny"],
+    Rain: ["Sunny"],
+    Showers: ["Sunny"],
+    Stormy: ["Sunny", "Calm"]
+  };
+}
+
+function areWeatherOptionsCompatible(weather1, weather2) {
+  if (!weather1 || !weather2) return true;
+  if (weather1 === weather2) return false;
+
+  const conflicts = getWeatherConflicts();
+  const blockedByOne = conflicts[weather1] || [];
+  const blockedByTwo = conflicts[weather2] || [];
+
+  return !blockedByOne.includes(weather2) && !blockedByTwo.includes(weather1);
+}
+
+function syncWeather2Visibility() {
+  const wrap = el("weather2Wrap");
+  if (!wrap) return;
+  wrap.classList.toggle("hidden", !state.incident.weather1);
+}
+
+function syncWeather2Options() {
+  const select = el("weather2");
+  if (!select) return;
+
+  const weather1 = state.incident.weather1;
+
+  Array.from(select.options).forEach((option) => {
+    const value = option.value;
+
+    if (!value) {
+      option.hidden = false;
+      option.disabled = false;
+      return;
+    }
+
+    const allowed = areWeatherOptionsCompatible(weather1, value);
+    option.hidden = weather1 ? !allowed : false;
+    option.disabled = weather1 ? !allowed : false;
+  });
+
+  if (!areWeatherOptionsCompatible(state.incident.weather1, state.incident.weather2)) {
+    state.incident.weather2 = "";
+    select.value = "";
+  }
+}
+
 function setAppVersion() {
   const target = el("appVersionText");
   if (target) target.textContent = CONFIG.APP_VERSION;
@@ -370,6 +429,24 @@ function bindIncidentEvents() {
       } else {
         state.incident[id] = e.target.value;
       }
+
+      if (id === "weather1") {
+        if (!state.incident.weather1) {
+          state.incident.weather2 = "";
+          if (el("weather2")) el("weather2").value = "";
+        }
+        syncWeather2Visibility();
+        syncWeather2Options();
+      }
+
+      if (id === "weather2") {
+        if (!areWeatherOptionsCompatible(state.incident.weather1, state.incident.weather2)) {
+          window.alert("That weather combination does not make sense together.");
+          state.incident.weather2 = "";
+          if (el("weather2")) el("weather2").value = "";
+        }
+      }
+
       markReportStale();
       scheduleDraftSave();
       updateReportSummary();
@@ -1321,6 +1398,9 @@ function renderIncidentFields() {
 
   el("weather1").value = state.incident.weather1;
   el("weather2").value = state.incident.weather2;
+  syncWeather2Visibility();
+  syncWeather2Options();
+
   el("distanceToScene").value = state.incident.distanceToScene;
   el("hose64Qty").value = state.incident.hoses.hose64Qty;
   el("hose38Qty").value = state.incident.hoses.hose38Qty;
@@ -1471,7 +1551,7 @@ function restoreDraftIfPresent() {
       }
     };
     state.agencies = Array.isArray(payload.agencies) ? payload.agencies : [];
-    state.ui.currentPage = payload.ui?.currentPage || "incidentPage";
+    state.ui.currentPage = "incidentPage";
     state.ui.previewUrl = payload.ui?.previewUrl || "";
     state.ui.hosesOpen = Boolean(payload.ui?.hosesOpen);
     state.ui.restoredDraft = true;
