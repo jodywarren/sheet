@@ -412,3 +412,10 @@ textarea{
 .top-gap{
   margin-top:10px;
 }
+.hidden{
+  display:none !important;
+}
+
+.modal.hidden{
+  display:none !important;
+}
