@@ -1,5 +1,5 @@
 const CONFIG = {
-  APP_VERSION: "2.0.2",
+  APP_VERSION: "2.0.3",
   MAX_REPORTS: 10,
   DRAFT_SAVE_DELAY_MS: 300,
   QUIET_HOURS_START: 22,
@@ -14,9 +14,9 @@ const CONFIG = {
 };
 
 const STORAGE_KEYS = {
-  PROFILE: "turnout_profile_v202",
-  REPORTS: "turnout_reports_v202",
-  DRAFT: "turnout_draft_v202"
+  PROFILE: "turnout_profile_v203",
+  REPORTS: "turnout_reports_v203",
+  DRAFT: "turnout_draft_v203"
 };
 
 const MEMBER_FILES = {
@@ -27,14 +27,13 @@ const MEMBER_FILES = {
 
 const state = {
   incident: {
-    eventNumber: "",
+    eventNumber: "F",
     pagerDate: "",
     pagerTime: "",
     brigadeCode: "",
     brigadeRole: "",
     incidentType: "",
     pagerDetails: "",
-    address: "",
     actualLocation: "",
     controlName: "",
     firsCode: "",
@@ -88,7 +87,8 @@ const state = {
     restoredDraft: false,
     waitingServiceWorker: null,
     lastDraftSavedAt: "",
-    reportGenerated: false
+    reportGenerated: false,
+    hosesOpen: false
   }
 };
 
@@ -263,6 +263,11 @@ function bindStaticEvents() {
     el("scanStatus").textContent = "OCR is intentionally disabled in this version. The report structure is ready for it.";
   });
 
+  el("toggleHosesBtn")?.addEventListener("click", () => {
+    state.ui.hosesOpen = !state.ui.hosesOpen;
+    renderHosesPanel();
+  });
+
   el("addSceneBrigadeBtn")?.addEventListener("click", addSceneBrigade);
   el("sceneBrigadeSelect")?.addEventListener("change", () => {
     el("sceneBrigadeOther").classList.toggle("hidden", el("sceneBrigadeSelect").value !== "Other");
@@ -328,7 +333,6 @@ function bindIncidentEvents() {
     ["brigadeCode", "brigadeCode"],
     ["incidentType", "incidentType"],
     ["pagerDetails", "pagerDetails"],
-    ["address", "address"],
     ["actualLocation", "actualLocation"],
     ["controlName", "controlName"],
     ["firsCode", "firsCode"],
@@ -338,10 +342,17 @@ function bindIncidentEvents() {
 
   map.forEach(([id, key]) => {
     el(id)?.addEventListener("input", (e) => {
-      state.incident[key] = e.target.value;
+      let value = e.target.value;
+
+      if (key === "eventNumber") {
+        if (!value.startsWith("F")) value = `F${value.replace(/^F/i, "")}`;
+        e.target.value = value;
+      }
+
+      state.incident[key] = value;
 
       if (key === "brigadeCode") {
-        const code = e.target.value.trim().toUpperCase();
+        const code = value.trim().toUpperCase();
         state.incident.brigadeRole = code.startsWith("CONN") ? "Primary" : code ? "Support" : "";
         el("brigadeRole").value = state.incident.brigadeRole;
       }
@@ -387,10 +398,10 @@ function updateConnectionBanner() {
   if (!banner) return;
 
   if (navigator.onLine) {
-    banner.className = "status-banner online";
+    banner.className = "status-banner online centered";
     banner.textContent = "Online";
   } else {
-    banner.className = "status-banner offline";
+    banner.className = "status-banner offline centered";
     banner.textContent = "Offline";
   }
 }
@@ -451,6 +462,12 @@ function updateReportActionState() {
     const btn = el(id);
     if (btn) btn.disabled = !enabled;
   });
+}
+
+function renderHosesPanel() {
+  const panel = el("hosesPanel");
+  if (!panel) return;
+  panel.classList.toggle("hidden", !state.ui.hosesOpen);
 }
 
 function handleImageUpload(e) {
@@ -552,9 +569,9 @@ function renderAgencies() {
       <div class="grid">
         ${agency.type === "Other" ? `<label>Other Agency Name<input data-field="otherName" type="text" value="${text(agency.otherName)}"></label>` : ""}
         <label>Officer Name<input data-field="officerName" type="text" value="${text(agency.officerName)}"></label>
-        <label>Contact Number<input data-field="contactNumber" type="text" value="${text(agency.contactNumber)}"></label>
+        <label>Contact Number<input data-field="contactNumber" type="text" inputmode="tel" value="${text(agency.contactNumber)}"></label>
         <label>Station<input data-field="station" type="text" value="${text(agency.station)}"></label>
-        <label>Badge Number<input data-field="badgeNumber" type="text" value="${text(agency.badgeNumber)}"></label>
+        <label>Badge Number<input data-field="badgeNumber" type="text" inputmode="numeric" value="${text(agency.badgeNumber)}"></label>
         <label class="full">Comments<textarea data-field="comments" rows="2">${text(agency.comments)}</textarea></label>
       </div>
     `;
@@ -922,13 +939,6 @@ function clearAllOic() {
   });
 }
 
-function buildResponderRoleLabel(r) {
-  const roles = [];
-  if (r.isDriver) roles.push("Driver");
-  if (r.isCrewLeader) roles.push("CL");
-  return roles.join(" ");
-}
-
 function formatResponderName(r) {
   if (!r.name.trim()) return "";
   if (r.brigade === "CONN" || !r.brigade) return r.name.trim();
@@ -1116,9 +1126,9 @@ function getValidationIssues() {
   const hasOic = all.some((r) => r.oic && r.name.trim());
   const needsOic = state.incident.brigadeCode.trim().toUpperCase().startsWith("CONN");
 
-  if (!state.incident.eventNumber.trim()) issues.push("Event Number");
+  if (!state.incident.eventNumber.trim() || state.incident.eventNumber.trim() === "F") issues.push("Event Number");
   if (!buildPagerDateTime().trim()) issues.push("Pager Date / Time");
-  if (!state.incident.address.trim()) issues.push("Address");
+  if (!state.incident.actualLocation.trim()) issues.push("Actual Location");
   if (!hasResponder) issues.push("Responder");
   if (needsOic && !hasOic) issues.push("OIC");
 
@@ -1162,7 +1172,7 @@ function generateReportFlow() {
 }
 
 function buildReportTitle() {
-  return `${state.incident.eventNumber || "NO_EVENT"} – ${state.incident.incidentType || "UNKNOWN"} – ${state.incident.address || "NO ADDRESS"}`;
+  return `${state.incident.eventNumber || "NO_EVENT"} – ${state.incident.incidentType || "UNKNOWN"} – ${state.incident.actualLocation || "NO LOCATION"}`;
 }
 
 function saveCurrentReport(options = {}) {
@@ -1293,14 +1303,13 @@ function showPage(pageId) {
 }
 
 function renderIncidentFields() {
-  el("eventNumber").value = state.incident.eventNumber;
+  el("eventNumber").value = state.incident.eventNumber || "F";
   el("pagerDate").value = state.incident.pagerDate;
   el("pagerTime").value = state.incident.pagerTime;
   el("brigadeCode").value = state.incident.brigadeCode;
   el("brigadeRole").value = state.incident.brigadeRole;
   el("incidentType").value = state.incident.incidentType;
   el("pagerDetails").value = state.incident.pagerDetails;
-  el("address").value = state.incident.address;
   el("actualLocation").value = state.incident.actualLocation;
   el("controlName").value = state.incident.controlName;
   el("firsCode").value = state.incident.firsCode;
@@ -1326,6 +1335,8 @@ function renderIncidentFields() {
   el("t1Code").value = state.responders.applianceCodes.t1;
   el("t2Code").value = state.responders.applianceCodes.t2;
   el("mtdCode").value = state.responders.applianceCodes.mtd;
+
+  renderHosesPanel();
 
   if (state.ui.previewUrl) {
     el("pagerPreview").src = state.ui.previewUrl;
@@ -1392,7 +1403,8 @@ function getDraftPayload() {
     agencies: clone(state.agencies),
     ui: {
       currentPage: state.ui.currentPage,
-      previewUrl: state.ui.previewUrl
+      previewUrl: state.ui.previewUrl,
+      hosesOpen: state.ui.hosesOpen
     },
     savedAt: new Date().toISOString()
   };
@@ -1408,7 +1420,7 @@ function isMeaningfulDraft(payload) {
     incident?.pagerTime ||
     incident?.brigadeCode ||
     incident?.incidentType ||
-    incident?.address ||
+    incident?.actualLocation ||
     incident?.comments ||
     incident?.brigadesOnScene?.length ||
     agencies?.length ||
@@ -1461,6 +1473,7 @@ function restoreDraftIfPresent() {
     state.agencies = Array.isArray(payload.agencies) ? payload.agencies : [];
     state.ui.currentPage = payload.ui?.currentPage || "incidentPage";
     state.ui.previewUrl = payload.ui?.previewUrl || "";
+    state.ui.hosesOpen = Boolean(payload.ui?.hosesOpen);
     state.ui.restoredDraft = true;
     state.ui.lastDraftSavedAt = payload.savedAt || "";
   } catch {}
