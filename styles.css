@@ -210,6 +210,11 @@ body {
   background: var(--success-dark);
 }
 
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .main {
   max-width: 1100px;
   margin: 0 auto;
@@ -234,7 +239,9 @@ body {
 }
 
 .card h2,
-.modal-card h2 {
+.modal-card h2,
+.card h3,
+.card h4 {
   margin-top: 0;
   margin-bottom: 0;
 }
@@ -251,6 +258,11 @@ body {
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
+}
+
+.mini-section {
+  margin-top: 12px;
+  padding-top: 10px;
 }
 
 .grid {
