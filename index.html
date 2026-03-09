@@ -17,7 +17,7 @@
         <img src="./connewarre-logo.png" alt="Connewarre logo" class="logo" />
         <div>
           <h1>CONNEWARRE FIRE BRIGADE TURNOUT SHEET</h1>
-          <p>Jody Tuuta © 2026 · Version <span id="appVersionText">2.0.1</span></p>
+          <p>Jody Tuuta © 2026 · Version <span id="appVersionText">2.0.2</span></p>
         </div>
       </div>
 
@@ -60,7 +60,7 @@
           <div class="section-head">
             <div>
               <h2>Incident</h2>
-              <p class="help-text no-top">Fast path first. Enter the core job details cleanly.</p>
+              <p class="help-text no-top">Follow the paper sheet flow. Core details first.</p>
             </div>
             <button id="saveDraftBtnIncident" class="secondary-btn" type="button">Save Draft</button>
           </div>
@@ -73,7 +73,7 @@
             <button id="scanBtn" class="secondary-btn" type="button">Scan</button>
           </div>
 
-          <div id="scanStatus" class="help-text">Image preview only in this hardened build.</div>
+          <div id="scanStatus" class="help-text">Image preview only in this version. OCR fields are ready for later.</div>
 
           <div class="preview-grid">
             <div class="preview-card">
@@ -100,15 +100,10 @@
                 <option value="G&SC">G&amp;SC</option>
               </select>
             </label>
-            <label>
-              Code Level
-              <select id="codeLevel">
-                <option value="">Select</option>
-                <option value="C1">C1</option>
-                <option value="C3">C3</option>
-              </select>
-            </label>
+            <label class="full">Pager Details<textarea id="pagerDetails" rows="5"></textarea></label>
             <label class="full">Address<textarea id="address" rows="2"></textarea></label>
+            <label class="full">Actual Location<input id="actualLocation" type="text" autocomplete="off" /></label>
+            <label>Control Name<input id="controlName" type="text" autocomplete="off" placeholder="Reeve Ave" /></label>
             <label>
               FIRS Code
               <div class="inline">
@@ -116,6 +111,24 @@
                 <button id="resetFirsBtn" class="tiny-btn" type="button">Reset</button>
               </div>
             </label>
+          </div>
+
+          <div class="section">
+            <h3>First Agency On Scene</h3>
+            <div class="row">
+              <select id="firstAgency">
+                <option value="">Choose first agency</option>
+                <option value="CFA">CFA</option>
+                <option value="FRV">FRV</option>
+                <option value="Police">Police</option>
+                <option value="Ambulance">Ambulance</option>
+                <option value="SES">SES</option>
+                <option value="PowerCor">PowerCor</option>
+                <option value="Gas">Gas</option>
+                <option value="Other">Other</option>
+              </select>
+              <input id="firstAgencyOther" class="hidden" type="text" placeholder="Other agency" autocomplete="off" />
+            </div>
           </div>
 
           <div class="section">
@@ -139,20 +152,108 @@
           </div>
 
           <div class="section">
-            <h3>First Agency On Scene</h3>
-            <div class="row">
-              <select id="firstAgency">
-                <option value="">Choose first agency</option>
-                <option value="CFA">CFA</option>
-                <option value="FRV">FRV</option>
-                <option value="Police">Police</option>
-                <option value="Ambulance">Ambulance</option>
-                <option value="SES">SES</option>
-                <option value="PowerCor">PowerCor</option>
-                <option value="Gas">Gas</option>
-                <option value="Other">Other</option>
-              </select>
-              <input id="firstAgencyOther" class="hidden" type="text" placeholder="Other agency" autocomplete="off" />
+            <h3>Weather</h3>
+            <div class="grid">
+              <label>
+                Weather 1
+                <select id="weather1">
+                  <option value="">Select</option>
+                  <option value="Fine">Fine</option>
+                  <option value="Sunny">Sunny</option>
+                  <option value="Overcast">Overcast</option>
+                  <option value="Cloudy">Cloudy</option>
+                  <option value="Cool">Cool</option>
+                  <option value="Cold">Cold</option>
+                  <option value="Hot">Hot</option>
+                  <option value="Windy">Windy</option>
+                  <option value="Very Windy">Very Windy</option>
+                  <option value="Rain">Rain</option>
+                  <option value="Showers">Showers</option>
+                  <option value="Stormy">Stormy</option>
+                  <option value="Humid">Humid</option>
+                  <option value="Extreme Fire Weather">Extreme Fire Weather</option>
+                </select>
+              </label>
+              <label>
+                Weather 2
+                <select id="weather2">
+                  <option value="">Optional</option>
+                  <option value="Fine">Fine</option>
+                  <option value="Sunny">Sunny</option>
+                  <option value="Overcast">Overcast</option>
+                  <option value="Cloudy">Cloudy</option>
+                  <option value="Cool">Cool</option>
+                  <option value="Cold">Cold</option>
+                  <option value="Hot">Hot</option>
+                  <option value="Windy">Windy</option>
+                  <option value="Very Windy">Very Windy</option>
+                  <option value="Rain">Rain</option>
+                  <option value="Showers">Showers</option>
+                  <option value="Stormy">Stormy</option>
+                  <option value="Humid">Humid</option>
+                  <option value="Extreme Fire Weather">Extreme Fire Weather</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Distance to Scene</h3>
+            <label>
+              Distance
+              <select id="distanceToScene"></select>
+            </label>
+          </div>
+
+          <div class="section">
+            <h3>Hoses Used</h3>
+            <div class="grid">
+              <label>
+                64
+                <select id="hose64Qty">
+                  <option value="0">None</option>
+                  <option value="1">1x64</option>
+                  <option value="2">2x64</option>
+                  <option value="3">3x64</option>
+                  <option value="4">4x64</option>
+                  <option value="5">5x64</option>
+                  <option value="6">6x64</option>
+                </select>
+              </label>
+              <label>
+                38
+                <select id="hose38Qty">
+                  <option value="0">None</option>
+                  <option value="1">1x38</option>
+                  <option value="2">2x38</option>
+                  <option value="3">3x38</option>
+                  <option value="4">4x38</option>
+                  <option value="5">5x38</option>
+                  <option value="6">6x38</option>
+                </select>
+              </label>
+              <label>
+                25
+                <select id="hose25Qty">
+                  <option value="0">None</option>
+                  <option value="1">1x25</option>
+                  <option value="2">2x25</option>
+                  <option value="3">3x25</option>
+                  <option value="4">4x25</option>
+                  <option value="5">5x25</option>
+                  <option value="6">6x25</option>
+                </select>
+              </label>
+              <label>
+                Other
+                <select id="hoseOtherType">
+                  <option value="">None</option>
+                  <option value="Live Reel">Live Reel</option>
+                  <option value="High Pressure">High Pressure</option>
+                  <option value="Bucket">Bucket</option>
+                  <option value="Garden Hose">Garden Hose</option>
+                </select>
+              </label>
             </div>
           </div>
 
@@ -174,15 +275,37 @@
           </div>
 
           <div class="section">
-            <h3>Incident Flags</h3>
-            <div class="chips">
-              <button class="chip-btn" id="flagMembersBeforeBtn" type="button">Members before 1st appliance</button>
-              <button class="chip-btn" id="flagAarBtn" type="button">AAR required</button>
-              <button class="chip-btn" id="flagHotDebriefBtn" type="button">Hot debrief conducted</button>
-            </div>
+            <h3>Comments</h3>
+            <label><textarea id="comments" rows="4"></textarea></label>
           </div>
 
-          <label>Notes<textarea id="notes" rows="4"></textarea></label>
+          <div class="section">
+            <h3>Incident Flags</h3>
+            <div class="chips">
+              <button class="chip-btn" id="flagMembersBeforeBtn" type="button">Members direct before 1st appliance</button>
+              <button class="chip-btn" id="flagAarBtn" type="button">AAR required</button>
+              <button class="chip-btn" id="flagInjuriesBtn" type="button">Injuries</button>
+            </div>
+
+            <div class="section mini-section">
+              <h4>Injury Notes</h4>
+              <label><textarea id="injuryNotes" rows="2"></textarea></label>
+            </div>
+
+            <div class="section mini-section">
+              <h4>Signal</h4>
+              <div class="chips">
+                <button class="chip-btn signal-btn" data-signal-code="27" type="button">27</button>
+                <button class="chip-btn signal-btn" data-signal-code="83" type="button">83</button>
+                <button class="chip-btn signal-btn" data-signal-code="55" type="button">55</button>
+                <button class="chip-btn signal-btn" data-signal-code="40" type="button">40</button>
+                <button class="chip-btn signal-btn" data-signal-code="56" type="button">56</button>
+              </div>
+              <div class="help-text">
+                27 = CIS / peer support required · 83 = deceased person · 55 = hostile act / serious violence situation · 40 = urgent police attendance required · 56 = police attendance required, non-urgent
+              </div>
+            </div>
+          </div>
 
           <div class="actions right">
             <button class="primary-btn" data-next="respondersPage" type="button">Next</button>
@@ -195,9 +318,42 @@
           <div class="section-head">
             <div>
               <h2>Responders</h2>
-              <p class="help-text no-top">Enter members cleanly. Choose destination, roles and flags with minimal fuss.</p>
+              <p class="help-text no-top">Assign appliances, codes and responder roles cleanly.</p>
             </div>
             <button id="saveDraftBtnResponders" class="secondary-btn" type="button">Save Draft</button>
+          </div>
+
+          <div class="section">
+            <h3>Appliance Codes</h3>
+            <div class="grid">
+              <label>
+                T1 Code
+                <select id="t1Code">
+                  <option value="">Not selected</option>
+                  <option value="C1">C1</option>
+                  <option value="C2">C2</option>
+                  <option value="C3">C3</option>
+                </select>
+              </label>
+              <label>
+                T2 Code
+                <select id="t2Code">
+                  <option value="">Not selected</option>
+                  <option value="C1">C1</option>
+                  <option value="C2">C2</option>
+                  <option value="C3">C3</option>
+                </select>
+              </label>
+              <label>
+                MTD P/T Code
+                <select id="mtdCode">
+                  <option value="">Not selected</option>
+                  <option value="C1">C1</option>
+                  <option value="C2">C2</option>
+                  <option value="C3">C3</option>
+                </select>
+              </label>
+            </div>
           </div>
 
           <div class="section">
@@ -239,11 +395,11 @@
             <button id="finishBtn" class="primary-btn" type="button">Generate Report</button>
           </div>
 
-          <div id="finishActions" class="hidden">
+          <div id="finishActions">
             <div class="row wrap">
-              <button id="sendSmsBtn" class="success-btn" type="button">Send SMS</button>
-              <button id="sendEmailBtn" class="success-btn" type="button">Send Email</button>
-              <button id="saveLocalBtn" class="success-btn" type="button">Save Locally</button>
+              <button id="sendSmsBtn" class="success-btn" type="button" disabled>Send SMS</button>
+              <button id="sendEmailBtn" class="success-btn" type="button" disabled>Send Email</button>
+              <button id="saveLocalBtn" class="success-btn" type="button" disabled>Save Locally</button>
             </div>
           </div>
 
