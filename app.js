@@ -324,9 +324,7 @@ function bindStaticEvents() {
   });
 
   el("pagerUpload")?.addEventListener("change", handleImageUpload);
-  el("scanBtn")?.addEventListener("click", () => {
-    el("scanStatus").textContent = "OCR is intentionally disabled in this version. The report structure is ready for it.";
-  });
+  el("scanBtn")?.addEventListener("click", rerunOcrFromPreview);
 
   el("toggleHosesBtn")?.addEventListener("click", () => {
     state.ui.hosesOpen = !state.ui.hosesOpen;
@@ -554,181 +552,350 @@ function renderHosesPanel() {
   panel.classList.toggle("hidden", !state.ui.hosesOpen);
 }
 
-function handleImageUpload(e) {
+async function handleImageUpload(e) {
   const file = e.target.files?.[0];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    state.ui.previewUrl = reader.result;
-    el("pagerPreview").src = reader.result;
-    el("pagerPreview").classList.remove("hidden");
-    el("pagerPreviewEmpty").classList.add("hidden");
-    el("scanStatus").textContent = `Loaded ${file.name}`;
-    markReportStale();
-    scheduleDraftSave();
+  const dataUrl = await fileToDataUrl(file);
+
+  state.ui.previewUrl = dataUrl;
+  el("pagerPreview").src = dataUrl;
+  el("pagerPreview").classList.remove("hidden");
+  el("pagerPreviewEmpty").classList.add("hidden");
+  el("scanStatus").textContent = `Loaded ${file.name}. Reading pager...`;
+
+  markReportStale();
+  scheduleDraftSave();
+
+  await runPagerOcr(dataUrl);
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function rerunOcrFromPreview() {
+  if (!state.ui.previewUrl) {
+    el("scanStatus").textContent = "Upload a pager screenshot first.";
+    return;
+  }
+
+  await runPagerOcr(state.ui.previewUrl);
+}
+
+async function runPagerOcr(imageSrc) {
+  if (!window.Tesseract) {
+    el("scanStatus").textContent = "OCR library did not load.";
+    return;
+  }
+
+  try {
+    el("scanStatus").textContent = "Reading pager screenshot...";
+
+    const result = await Tesseract.recognize(imageSrc, "eng", {
+      logger: (msg) => {
+        if (msg.status === "recognizing text" && typeof msg.progress === "number") {
+          el("scanStatus").textContent = `Reading pager screenshot... ${Math.round(msg.progress * 100)}%`;
+        }
+      }
+    });
+
+    const rawText = result?.data?.text || "";
+    const normalizedText = normalizeOcrText(rawText);
+    const blocks = extractEmergencyBlocks(normalizedText);
+
+    if (!blocks.length) {
+      el("scanStatus").textContent = "No EMERGENCY pager block found.";
+      return;
+    }
+
+    const mergedEvents = mergeEmergencyBlocks(blocks);
+    const firstEventNumber = blocks.map((b) => b.eventNumber).find(Boolean);
+    const selectedEvent =
+      mergedEvents.find((e) => e.eventNumber === firstEventNumber) ||
+      mergedEvents[0];
+
+    if (!selectedEvent) {
+      el("scanStatus").textContent = "Pager text found, but no event could be parsed.";
+      return;
+    }
+
+    populateIncidentFromOcr(selectedEvent);
+    renderEverything();
+
+    el("scanStatus").textContent =
+      `OCR complete. Loaded ${selectedEvent.eventNumber || "event"} from ${selectedEvent.blockCount} pager message${selectedEvent.blockCount === 1 ? "" : "s"}.`;
+  } catch (error) {
+    console.error(error);
+    el("scanStatus").textContent = "OCR failed. Upload again or correct fields manually.";
+  }
+}
+
+function normalizeOcrText(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .replace(/[|]/g, "1")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[—–]/g, "-")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .toUpperCase()
+    .trim();
+}
+
+function extractEmergencyBlocks(text) {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const blocks = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!lines[i].includes("EMERGENCY")) continue;
+
+    const blockLines = [];
+    blockLines.push(lines[i]);
+
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const line = lines[j];
+
+      if (j > i + 1 && line.includes("EMERGENCY")) break;
+      if (line.includes("SINCE ALERT")) break;
+      if (line.includes("RESPOND")) break;
+      if (line.includes("REVIEW")) break;
+      if (line.includes("NON-EMERGENCY")) break;
+      if (line.includes("ADMIN")) break;
+
+      blockLines.push(line);
+
+      if (/F\d{6,}/.test(line)) break;
+      if (blockLines.length >= 8) break;
+    }
+
+    const parsed = parseEmergencyBlock(blockLines);
+    if (parsed.eventNumber || parsed.alertLine) {
+      blocks.push(parsed);
+    }
+  }
+
+  return blocks;
+}
+
+function parseEmergencyBlock(lines) {
+  const blockText = lines.join("\n");
+  const flatText = lines.join(" ");
+
+  const dateTimeMatch = flatText.match(/(\d{2}:\d{2}:\d{2})\s+(\d{2}-\d{2}-\d{4})/);
+  const pagerTime = dateTimeMatch?.[1] || "";
+  const pagerDate = dateTimeMatch?.[2] || "";
+
+  const eventMatch = flatText.match(/(F\d{6,})\b/g);
+  const eventNumber = eventMatch ? eventMatch[eventMatch.length - 1] : "";
+
+  const alertStartIndex = lines.findIndex((line) => line.includes("ALERT "));
+  const alertAndBody = alertStartIndex >= 0 ? lines.slice(alertStartIndex).join(" ") : flatText;
+
+  const alertLineMatch = alertAndBody.match(/ALERT\s+([A-Z0-9]+)\s+([A-Z]{4})C([13])\b/);
+  const brigadeCode = alertLineMatch?.[1] || "";
+  const incidentType = alertLineMatch?.[2] || "";
+  const codeLevel = alertLineMatch?.[3] ? `C${alertLineMatch[3]}` : "";
+
+  const actualLocation = extractActualLocation(alertAndBody);
+  const units = extractPagedUnits(flatText, eventNumber);
+
+  return {
+    rawText: blockText,
+    lines,
+    pagerDate,
+    pagerTime,
+    eventNumber,
+    brigadeCode,
+    incidentType,
+    codeLevel,
+    actualLocation,
+    units,
+    alertLine: alertLineMatch?.[0] || ""
   };
-  reader.readAsDataURL(file);
 }
 
-function addSceneBrigade() {
-  let value = el("sceneBrigadeSelect").value;
-  if (!value) return;
+function extractActualLocation(text) {
+  const noEvent = text.replace(/F\d{6,}.*/g, " ");
+  const locationMatch = noEvent.match(
+    /\b(\d+\s+[A-Z0-9 ]+?(?:ST|RD|AV|AVE|DR|BVD|BLVD|HWY|CT|CRT|CRES|PL|WAY|LANE|LN)\s+[A-Z ]+?)(?=\s*\/|\s+M\s+\d+)/i
+  );
 
-  if (value === "Other") value = el("sceneBrigadeOther").value.trim().toUpperCase();
-  if (!value) return;
+  if (!locationMatch) return "";
 
-  if (!state.incident.brigadesOnScene.includes(value)) {
-    state.incident.brigadesOnScene.push(value);
+  return cleanLocation(locationMatch[1]);
+}
+
+function cleanLocation(value) {
+  return String(value || "")
+    .split("/")[0]
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractPagedUnits(text, eventNumber) {
+  let working = text;
+
+  if (eventNumber) {
+    working = working.replace(eventNumber, " ");
   }
 
-  el("sceneBrigadeSelect").value = "";
-  el("sceneBrigadeOther").value = "";
-  el("sceneBrigadeOther").classList.add("hidden");
+  const afterMapMatch = working.match(/\)\s+(.+)$/);
+  const unitSource = afterMapMatch?.[1] || working;
 
-  markReportStale();
-  renderSceneBrigades();
-  scheduleDraftSave();
-  updateReportSummary();
-}
+  const tokens = unitSource
+    .split(/\s+/)
+    .map((token) => token.replace(/[^A-Z0-9]/g, ""))
+    .filter(Boolean);
 
-function renderSceneBrigades() {
-  const wrap = el("sceneBrigadeChips");
-  if (!wrap) return;
+  const ignore = new Set([
+    "EMERGENCY",
+    "ALERT",
+    "SINCE",
+    "ALERTS",
+    "SINCEALERT",
+    "RESPOND",
+    "REVIEW",
+    "OTHER",
+    "ATTENDING",
+    "NONEMERGENCY",
+    "ADMIN",
+    "FP",
+    "F",
+    "AFPR"
+  ]);
 
-  wrap.innerHTML = "";
+  const units = [];
 
-  state.incident.brigadesOnScene.forEach((code) => {
-    const chip = document.createElement("div");
-    chip.className = "scene-chip";
-    chip.innerHTML = `<span>${text(code)}</span><button type="button" aria-label="Remove ${text(code)}">×</button>`;
-    chip.querySelector("button").addEventListener("click", () => {
-      state.incident.brigadesOnScene = state.incident.brigadesOnScene.filter((x) => x !== code);
-      markReportStale();
-      renderSceneBrigades();
-      scheduleDraftSave();
-      updateReportSummary();
-    });
-    wrap.appendChild(chip);
-  });
-}
+  tokens.forEach((token) => {
+    if (ignore.has(token)) return;
 
-function autoAddAgencyFromSelect() {
-  const select = el("agencyType");
-  const type = select.value;
-  if (!type) return;
+    let normalized = token;
 
-  state.agencies.push({
-    id: uid(),
-    type,
-    otherName: "",
-    officerName: "",
-    contactNumber: "",
-    station: "",
-    badgeNumber: "",
-    comments: ""
+    if (/^C[A-Z0-9]{4,6}$/.test(token)) {
+      normalized = token.slice(1);
+    }
+
+    const isOperationalCode =
+      /^(?:[A-Z]{4,6}|P\d+[A-Z]?|R\d+|STHB\d+|SES\d*|MTDU|CONN|GROV|BARW|TRQY|FRES|P63B|P64)$/.test(normalized);
+
+    if (!isOperationalCode) return;
+    if (!units.includes(normalized)) units.push(normalized);
   });
 
-  select.value = "";
-  markReportStale();
-  renderAgencies();
-  scheduleDraftSave();
-  updateReportSummary();
+  return units;
 }
 
-function renderAgencies() {
-  const wrap = el("agencyBlocks");
-  if (!wrap) return;
+function mergeEmergencyBlocks(blocks) {
+  const byEvent = new Map();
 
-  wrap.innerHTML = "";
+  blocks.forEach((block) => {
+    const key = block.eventNumber || `NO_EVENT_${block.pagerDate}_${block.pagerTime}`;
 
-  state.agencies.forEach((agency) => {
-    const block = document.createElement("div");
-    block.className = "agency-block";
-    block.innerHTML = `
-      <div class="row between">
-        <strong>${text(agency.type)}</strong>
-        <button class="tiny-btn" type="button">Remove</button>
-      </div>
-      <div class="grid">
-        ${agency.type === "Other" ? `<label>Other Agency Name<input data-field="otherName" type="text" value="${text(agency.otherName)}"></label>` : ""}
-        <label>Officer Name<input data-field="officerName" type="text" value="${text(agency.officerName)}"></label>
-        <label>Contact Number<input data-field="contactNumber" type="text" inputmode="tel" value="${text(agency.contactNumber)}"></label>
-        <label>Station<input data-field="station" type="text" value="${text(agency.station)}"></label>
-        <label>Badge Number<input data-field="badgeNumber" type="text" inputmode="numeric" value="${text(agency.badgeNumber)}"></label>
-        <label class="full">Comments<textarea data-field="comments" rows="2">${text(agency.comments)}</textarea></label>
-      </div>
-    `;
-
-    block.querySelector("button").addEventListener("click", () => {
-      const confirmed = window.confirm(`Remove agency entry for ${agency.type}?`);
-      if (!confirmed) return;
-      state.agencies = state.agencies.filter((a) => a.id !== agency.id);
-      markReportStale();
-      renderAgencies();
-      scheduleDraftSave();
-      updateReportSummary();
-    });
-
-    block.querySelectorAll("[data-field]").forEach((field) => {
-      field.addEventListener("input", (e) => {
-        agency[e.target.dataset.field] = e.target.value;
-        markReportStale();
-        scheduleDraftSave();
-        updateReportSummary();
+    if (!byEvent.has(key)) {
+      byEvent.set(key, {
+        eventNumber: block.eventNumber,
+        pagerDate: block.pagerDate,
+        pagerTime: block.pagerTime,
+        brigadeCode: block.brigadeCode,
+        incidentType: block.incidentType,
+        codeLevel: block.codeLevel,
+        actualLocation: block.actualLocation,
+        units: [...block.units],
+        pagerDetailsParts: [block.rawText],
+        blockCount: 1
       });
+      return;
+    }
+
+    const existing = byEvent.get(key);
+
+    if (isEarlierPagerTime(block.pagerDate, block.pagerTime, existing.pagerDate, existing.pagerTime)) {
+      existing.pagerDate = block.pagerDate || existing.pagerDate;
+      existing.pagerTime = block.pagerTime || existing.pagerTime;
+    }
+
+    existing.brigadeCode = existing.brigadeCode || block.brigadeCode;
+    existing.incidentType = existing.incidentType || block.incidentType;
+    existing.codeLevel = existing.codeLevel || block.codeLevel;
+    existing.actualLocation = existing.actualLocation || block.actualLocation;
+
+    block.units.forEach((unit) => {
+      if (!existing.units.includes(unit)) existing.units.push(unit);
     });
 
-    wrap.appendChild(block);
+    if (!existing.pagerDetailsParts.includes(block.rawText)) {
+      existing.pagerDetailsParts.push(block.rawText);
+    }
+
+    existing.blockCount += 1;
   });
+
+  return Array.from(byEvent.values()).map((event) => ({
+    ...event,
+    pagerDetails: event.pagerDetailsParts.join("\n\n")
+  }));
 }
 
-function toggleFlag(key, buttonId) {
-  state.incident.flags[key] = !state.incident.flags[key];
-  el(buttonId).classList.toggle("active", state.incident.flags[key]);
-  markReportStale();
-  scheduleDraftSave();
-  updateReportSummary();
+function isEarlierPagerTime(dateA, timeA, dateB, timeB) {
+  const a = parsePagerDateTime(dateA, timeA);
+  const b = parsePagerDateTime(dateB, timeB);
+
+  if (!a && !b) return false;
+  if (a && !b) return true;
+  if (!a && b) return false;
+
+  return a.getTime() < b.getTime();
 }
 
-function hasResponderInjury() {
-  return getAllResponders().some((r) => r.injured);
+function parsePagerDateTime(dateText, timeText) {
+  if (!dateText || !timeText) return null;
+
+  const parts = dateText.split("-");
+  if (parts.length !== 3) return null;
+
+  const [dd, mm, yyyy] = parts;
+  const iso = `${yyyy}-${mm}-${dd}T${timeText}`;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function isInjuriesFlagActive() {
-  return state.incident.flags.injuriesManual || hasResponderInjury();
-}
+function populateIncidentFromOcr(parsed) {
+  state.incident.eventNumber = parsed.eventNumber || state.incident.eventNumber || "F";
+  state.incident.pagerDate = parsed.pagerDate || state.incident.pagerDate;
+  state.incident.pagerTime = parsed.pagerTime || state.incident.pagerTime;
+  state.incident.brigadeCode = parsed.brigadeCode || state.incident.brigadeCode;
+  state.incident.brigadeRole = state.incident.brigadeCode.startsWith("CONN")
+    ? "Primary"
+    : state.incident.brigadeCode
+      ? "Support"
+      : "";
+  state.incident.incidentType = parsed.incidentType || state.incident.incidentType;
+  state.incident.pagerDetails = parsed.pagerDetails || state.incident.pagerDetails;
+  state.incident.actualLocation = parsed.actualLocation || state.incident.actualLocation;
+  state.incident.brigadesOnScene = parsed.units?.length ? parsed.units : state.incident.brigadesOnScene;
 
-function toggleManualInjuriesFlag() {
-  state.incident.flags.injuriesManual = !state.incident.flags.injuriesManual;
-  syncInjuriesFlagButton();
-  markReportStale();
-  scheduleDraftSave();
-  updateReportSummary();
-}
-
-function syncInjuriesFlagButton() {
-  el("flagInjuriesBtn")?.classList.toggle("active", isInjuriesFlagActive());
-}
-
-function toggleSignal(code) {
-  const list = state.incident.signals;
-  if (list.includes(code)) {
-    state.incident.signals = list.filter((x) => x !== code);
-  } else {
-    state.incident.signals.push(code);
+  if (el("brigadeRole")) {
+    el("brigadeRole").value = state.incident.brigadeRole;
   }
 
-  syncSignalButtons();
   markReportStale();
   scheduleDraftSave();
-  updateReportSummary();
 }
 
-function syncSignalButtons() {
-  document.querySelectorAll(".signal-btn").forEach((btn) => {
-    btn.classList.toggle("active", state.incident.signals.includes(btn.dataset.signalCode));
-  });
+function bindConnectionEvents() {
+  window.addEventListener("online", updateConnectionBanner);
+  window.addEventListener("offline", updateConnectionBanner);
 }
 
 function resolveResponderMemberDetails(groupKey, person) {
@@ -898,10 +1065,6 @@ function renderResponderGroup(groupKey, containerId, destinations) {
         renderResponders();
         scheduleDraftSave();
       });
-
-      if (groupKey === "mtd" && dest !== "MTD P/T") {
-        // leave other options usable if you still want Station/Direct from MTD section
-      }
 
       destWrap.appendChild(btn);
     });
@@ -1101,8 +1264,8 @@ function buildControlLine() {
   if (!name && !role) return "";
 
   const controlText = name
-    ? `${name}${name.toLowerCase().endsWith("control") ? "" : " Control"}`
-    : "Control";
+    ? `${name}${name.toLowerCase().endsWith("CONTROL") ? "" : " CONTROL"}`
+    : "CONTROL";
 
   return role ? `${controlText} | ${role}` : controlText;
 }
