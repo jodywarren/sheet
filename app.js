@@ -54,6 +54,7 @@ const state = {
     flags: {
       membersBefore: false,
       aar: false,
+      hotDebrief: false,
       injuriesManual: false
     },
     signals: []
@@ -263,7 +264,7 @@ function createResponder(group) {
     brigade: group === "connewarre" ? "CONN" : "",
     name: "",
     phone: "",
-    destination: "",
+    destination: group === "mtd" ? "MTD P/T" : "",
     isDriver: false,
     isCrewLeader: false,
     ba: false,
@@ -277,6 +278,11 @@ function normaliseResponderState() {
     state.responders[groupKey] = (state.responders[groupKey] || []).map((person) => {
       const next = { ...createResponder(groupKey), ...person };
       delete next.truckRole;
+
+      if (groupKey === "mtd" && !next.destination) {
+        next.destination = "MTD P/T";
+      }
+
       return next;
     });
   });
@@ -350,6 +356,7 @@ function bindStaticEvents() {
 
   el("flagMembersBeforeBtn")?.addEventListener("click", () => toggleFlag("membersBefore", "flagMembersBeforeBtn"));
   el("flagAarBtn")?.addEventListener("click", () => toggleFlag("aar", "flagAarBtn"));
+  el("flagHotDebriefBtn")?.addEventListener("click", () => toggleFlag("hotDebrief", "flagHotDebriefBtn"));
   el("flagInjuriesBtn")?.addEventListener("click", toggleManualInjuriesFlag);
 
   document.querySelectorAll(".signal-btn").forEach((btn) => {
@@ -806,7 +813,9 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       return `<option value="${text(name)}"></option>`;
     }).join("");
 
-    const showTruckRole = person.destination === "T1" || person.destination === "T2" || person.destination === "MTD P/T";
+    const showTruckRole = groupKey === "mtd"
+      ? true
+      : person.destination === "T1" || person.destination === "T2" || person.destination === "MTD P/T";
 
     card.innerHTML = `
       <div class="responder-card-top">
@@ -840,6 +849,11 @@ function renderResponderGroup(groupKey, containerId, destinations) {
     nameInput.addEventListener("input", (e) => {
       person.name = e.target.value;
       resolveResponderMemberDetails(groupKey, person);
+
+      if (groupKey === "mtd") {
+        person.destination = "MTD P/T";
+      }
+
       updateResponderCardDisplay(card, person, groupKey);
       updateOicBanner();
       updateReportSummary();
@@ -865,16 +879,30 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       btn.className = `chip-btn ${person.destination === dest ? "active" : ""}`;
       btn.textContent = dest;
       btn.disabled = !person.name.trim();
+
+      if (groupKey === "mtd" && dest === "MTD P/T") {
+        btn.classList.add("active");
+      }
+
       btn.addEventListener("click", () => {
-        person.destination = dest;
-        if (!(dest === "T1" || dest === "T2" || dest === "MTD P/T")) {
-          person.isDriver = false;
-          person.isCrewLeader = false;
+        if (groupKey === "mtd") {
+          person.destination = "MTD P/T";
+        } else {
+          person.destination = dest;
+          if (!(dest === "T1" || dest === "T2" || dest === "MTD P/T")) {
+            person.isDriver = false;
+            person.isCrewLeader = false;
+          }
         }
         markReportStale();
         renderResponders();
         scheduleDraftSave();
       });
+
+      if (groupKey === "mtd" && dest !== "MTD P/T") {
+        // leave other options usable if you still want Station/Direct from MTD section
+      }
+
       destWrap.appendChild(btn);
     });
 
@@ -1166,6 +1194,7 @@ function buildReport() {
   const flags = [];
   if (state.incident.flags.membersBefore) flags.push("Members direct before 1st appliance");
   if (state.incident.flags.aar) flags.push("AAR required");
+  if (state.incident.flags.hotDebrief) flags.push("Hot debrief conducted");
   if (isInjuriesFlagActive()) flags.push("Injuries");
 
   const signalsLine = buildSignalsLine();
@@ -1409,6 +1438,7 @@ function renderIncidentFields() {
 
   el("flagMembersBeforeBtn").classList.toggle("active", state.incident.flags.membersBefore);
   el("flagAarBtn").classList.toggle("active", state.incident.flags.aar);
+  el("flagHotDebriefBtn")?.classList.toggle("active", state.incident.flags.hotDebrief);
   syncInjuriesFlagButton();
   syncSignalButtons();
 
@@ -1455,6 +1485,7 @@ function updateReportSummary() {
   const flagsCount = [
     state.incident.flags.membersBefore,
     state.incident.flags.aar,
+    state.incident.flags.hotDebrief,
     isInjuriesFlagActive(),
     state.incident.signals.length > 0
   ].filter(Boolean).length;
