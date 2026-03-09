@@ -1,15 +1,22 @@
 const CONFIG = {
-  APP_VERSION: "2.0.1",
+  APP_VERSION: "2.0.2",
   MAX_REPORTS: 10,
   DRAFT_SAVE_DELAY_MS: 300,
   QUIET_HOURS_START: 22,
-  QUIET_HOURS_END: 7
+  QUIET_HOURS_END: 7,
+  SIGNALS: {
+    "27": "CIS / peer support required",
+    "83": "deceased person",
+    "55": "hostile act / serious violence situation",
+    "40": "urgent police attendance required",
+    "56": "police attendance required, non-urgent"
+  }
 };
 
 const STORAGE_KEYS = {
-  PROFILE: "turnout_profile_v201",
-  REPORTS: "turnout_reports_v201",
-  DRAFT: "turnout_draft_v201"
+  PROFILE: "turnout_profile_v202",
+  REPORTS: "turnout_reports_v202",
+  DRAFT: "turnout_draft_v202"
 };
 
 const MEMBER_FILES = {
@@ -26,22 +33,40 @@ const state = {
     brigadeCode: "",
     brigadeRole: "",
     incidentType: "",
-    codeLevel: "",
+    pagerDetails: "",
     address: "",
+    actualLocation: "",
+    controlName: "",
     firsCode: "",
     brigadesOnScene: [],
     firstAgency: "",
     firstAgencyOther: "",
-    notes: "",
+    weather1: "",
+    weather2: "",
+    distanceToScene: "",
+    comments: "",
+    injuryNotes: "",
+    hoses: {
+      hose64Qty: "0",
+      hose38Qty: "0",
+      hose25Qty: "0",
+      hoseOtherType: ""
+    },
     flags: {
       membersBefore: false,
       aar: false,
-      hotDebrief: false
-    }
+      injuriesManual: false
+    },
+    signals: []
   },
   responders: {
     connewarre: [],
-    mtd: []
+    mtd: [],
+    applianceCodes: {
+      t1: "",
+      t2: "",
+      mtd: ""
+    }
   },
   agencies: [],
   profile: {
@@ -62,7 +87,8 @@ const state = {
     previewUrl: "",
     restoredDraft: false,
     waitingServiceWorker: null,
-    lastDraftSavedAt: ""
+    lastDraftSavedAt: "",
+    reportGenerated: false
   }
 };
 
@@ -72,6 +98,7 @@ document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
   setAppVersion();
+  populateDistanceDropdown();
   await loadMemberLists();
   loadProfile();
   loadSavedReports();
@@ -113,6 +140,24 @@ function clone(value) {
 function setAppVersion() {
   const target = el("appVersionText");
   if (target) target.textContent = CONFIG.APP_VERSION;
+}
+
+function populateDistanceDropdown() {
+  const select = el("distanceToScene");
+  if (!select) return;
+
+  select.innerHTML = `<option value="">Select</option>`;
+  for (let i = 0; i <= 20; i += 1) {
+    const option = document.createElement("option");
+    option.value = `${i} km`;
+    option.textContent = `${i} km`;
+    select.appendChild(option);
+  }
+
+  const extra = document.createElement("option");
+  extra.value = "21+ km";
+  extra.textContent = "21+ km";
+  select.appendChild(extra);
 }
 
 async function loadMemberLists() {
@@ -172,21 +217,14 @@ function normaliseResponderState() {
   ["connewarre", "mtd"].forEach((groupKey) => {
     state.responders[groupKey] = (state.responders[groupKey] || []).map((person) => {
       const next = { ...createResponder(groupKey), ...person };
-
-      if (typeof person.truckRole === "string") {
-        if (person.truckRole === "Driver") next.isDriver = true;
-        if (person.truckRole === "CL") next.isCrewLeader = true;
-      }
-
-      if (person.truckRole === "Driver/CL") {
-        next.isDriver = true;
-        next.isCrewLeader = true;
-      }
-
       delete next.truckRole;
       return next;
     });
   });
+
+  if (!state.responders.applianceCodes) {
+    state.responders.applianceCodes = { t1: "", t2: "", mtd: "" };
+  }
 }
 
 function ensureRows() {
@@ -214,6 +252,7 @@ function bindStaticEvents() {
   el("openSettingsBtn")?.addEventListener("click", openSettings);
   el("closeSettingsBtn")?.addEventListener("click", closeSettings);
   el("saveProfileBtn")?.addEventListener("click", saveProfileFromUi);
+
   el("editOicBtn")?.addEventListener("click", () => {
     showPage("respondersPage");
     updateDraftMeta("Review and update OIC in the responders section if needed.");
@@ -221,7 +260,7 @@ function bindStaticEvents() {
 
   el("pagerUpload")?.addEventListener("change", handleImageUpload);
   el("scanBtn")?.addEventListener("click", () => {
-    el("scanStatus").textContent = "OCR is intentionally disabled in this hardened build. Reliability first.";
+    el("scanStatus").textContent = "OCR is intentionally disabled in this version. The report structure is ready for it.";
   });
 
   el("addSceneBrigadeBtn")?.addEventListener("click", addSceneBrigade);
@@ -232,12 +271,14 @@ function bindStaticEvents() {
   el("firstAgency")?.addEventListener("change", () => {
     el("firstAgencyOther").classList.toggle("hidden", el("firstAgency").value !== "Other");
     state.incident.firstAgency = el("firstAgency").value;
+    markReportStale();
     scheduleDraftSave();
     renderEverything();
   });
 
   el("firstAgencyOther")?.addEventListener("input", () => {
     state.incident.firstAgencyOther = el("firstAgencyOther").value;
+    markReportStale();
     scheduleDraftSave();
   });
 
@@ -245,11 +286,16 @@ function bindStaticEvents() {
 
   el("flagMembersBeforeBtn")?.addEventListener("click", () => toggleFlag("membersBefore", "flagMembersBeforeBtn"));
   el("flagAarBtn")?.addEventListener("click", () => toggleFlag("aar", "flagAarBtn"));
-  el("flagHotDebriefBtn")?.addEventListener("click", () => toggleFlag("hotDebrief", "flagHotDebriefBtn"));
+  el("flagInjuriesBtn")?.addEventListener("click", toggleManualInjuriesFlag);
+
+  document.querySelectorAll(".signal-btn").forEach((btn) => {
+    btn.addEventListener("click", () => toggleSignal(btn.dataset.signalCode));
+  });
 
   el("resetFirsBtn")?.addEventListener("click", () => {
     state.incident.firsCode = "";
     el("firsCode").value = "";
+    markReportStale();
     scheduleDraftSave();
     updateReportSummary();
   });
@@ -281,10 +327,13 @@ function bindIncidentEvents() {
     ["pagerTime", "pagerTime"],
     ["brigadeCode", "brigadeCode"],
     ["incidentType", "incidentType"],
-    ["codeLevel", "codeLevel"],
+    ["pagerDetails", "pagerDetails"],
     ["address", "address"],
+    ["actualLocation", "actualLocation"],
+    ["controlName", "controlName"],
     ["firsCode", "firsCode"],
-    ["notes", "notes"]
+    ["comments", "comments"],
+    ["injuryNotes", "injuryNotes"]
   ];
 
   map.forEach(([id, key]) => {
@@ -297,6 +346,31 @@ function bindIncidentEvents() {
         el("brigadeRole").value = state.incident.brigadeRole;
       }
 
+      markReportStale();
+      scheduleDraftSave();
+      updateReportSummary();
+    });
+  });
+
+  ["weather1", "weather2", "distanceToScene", "hose64Qty", "hose38Qty", "hose25Qty", "hoseOtherType"].forEach((id) => {
+    el(id)?.addEventListener("change", (e) => {
+      if (id.startsWith("hose")) {
+        state.incident.hoses[id] = e.target.value;
+      } else {
+        state.incident[id] = e.target.value;
+      }
+      markReportStale();
+      scheduleDraftSave();
+      updateReportSummary();
+    });
+  });
+
+  ["t1Code", "t2Code", "mtdCode"].forEach((id) => {
+    el(id)?.addEventListener("change", (e) => {
+      if (id === "t1Code") state.responders.applianceCodes.t1 = e.target.value;
+      if (id === "t2Code") state.responders.applianceCodes.t2 = e.target.value;
+      if (id === "mtdCode") state.responders.applianceCodes.mtd = e.target.value;
+      markReportStale();
       scheduleDraftSave();
       updateReportSummary();
     });
@@ -366,6 +440,19 @@ function reloadForUpdate() {
   window.location.reload();
 }
 
+function markReportStale() {
+  state.ui.reportGenerated = false;
+  updateReportActionState();
+}
+
+function updateReportActionState() {
+  const enabled = state.ui.reportGenerated;
+  ["sendSmsBtn", "sendEmailBtn", "saveLocalBtn"].forEach((id) => {
+    const btn = el(id);
+    if (btn) btn.disabled = !enabled;
+  });
+}
+
 function handleImageUpload(e) {
   const file = e.target.files?.[0];
   if (!file) return;
@@ -377,6 +464,7 @@ function handleImageUpload(e) {
     el("pagerPreview").classList.remove("hidden");
     el("pagerPreviewEmpty").classList.add("hidden");
     el("scanStatus").textContent = `Loaded ${file.name}`;
+    markReportStale();
     scheduleDraftSave();
   };
   reader.readAsDataURL(file);
@@ -397,6 +485,7 @@ function addSceneBrigade() {
   el("sceneBrigadeOther").value = "";
   el("sceneBrigadeOther").classList.add("hidden");
 
+  markReportStale();
   renderSceneBrigades();
   scheduleDraftSave();
   updateReportSummary();
@@ -414,6 +503,7 @@ function renderSceneBrigades() {
     chip.innerHTML = `<span>${text(code)}</span><button type="button" aria-label="Remove ${text(code)}">×</button>`;
     chip.querySelector("button").addEventListener("click", () => {
       state.incident.brigadesOnScene = state.incident.brigadesOnScene.filter((x) => x !== code);
+      markReportStale();
       renderSceneBrigades();
       scheduleDraftSave();
       updateReportSummary();
@@ -439,6 +529,7 @@ function autoAddAgencyFromSelect() {
   });
 
   select.value = "";
+  markReportStale();
   renderAgencies();
   scheduleDraftSave();
   updateReportSummary();
@@ -472,6 +563,7 @@ function renderAgencies() {
       const confirmed = window.confirm(`Remove agency entry for ${agency.type}?`);
       if (!confirmed) return;
       state.agencies = state.agencies.filter((a) => a.id !== agency.id);
+      markReportStale();
       renderAgencies();
       scheduleDraftSave();
       updateReportSummary();
@@ -480,6 +572,7 @@ function renderAgencies() {
     block.querySelectorAll("[data-field]").forEach((field) => {
       field.addEventListener("input", (e) => {
         agency[e.target.dataset.field] = e.target.value;
+        markReportStale();
         scheduleDraftSave();
         updateReportSummary();
       });
@@ -492,8 +585,49 @@ function renderAgencies() {
 function toggleFlag(key, buttonId) {
   state.incident.flags[key] = !state.incident.flags[key];
   el(buttonId).classList.toggle("active", state.incident.flags[key]);
+  markReportStale();
   scheduleDraftSave();
   updateReportSummary();
+}
+
+function hasResponderInjury() {
+  return getAllResponders().some((r) => r.injured);
+}
+
+function isInjuriesFlagActive() {
+  return state.incident.flags.injuriesManual || hasResponderInjury();
+}
+
+function toggleManualInjuriesFlag() {
+  state.incident.flags.injuriesManual = !state.incident.flags.injuriesManual;
+  syncInjuriesFlagButton();
+  markReportStale();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function syncInjuriesFlagButton() {
+  el("flagInjuriesBtn")?.classList.toggle("active", isInjuriesFlagActive());
+}
+
+function toggleSignal(code) {
+  const list = state.incident.signals;
+  if (list.includes(code)) {
+    state.incident.signals = list.filter((x) => x !== code);
+  } else {
+    state.incident.signals.push(code);
+  }
+
+  syncSignalButtons();
+  markReportStale();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function syncSignalButtons() {
+  document.querySelectorAll(".signal-btn").forEach((btn) => {
+    btn.classList.toggle("active", state.incident.signals.includes(btn.dataset.signalCode));
+  });
 }
 
 function resolveResponderMemberDetails(groupKey, person) {
@@ -552,6 +686,7 @@ function renderResponders() {
   renderResponderGroup("connewarre", "connewarreList", ["T1", "T2", "Station", "Direct"]);
   renderResponderGroup("mtd", "mtdList", ["MTD P/T", "Station", "Direct"]);
   updateOicBanner();
+  syncInjuriesFlagButton();
   updateReportSummary();
 }
 
@@ -614,6 +749,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       updateResponderCardDisplay(card, person, groupKey);
       updateOicBanner();
       updateReportSummary();
+      markReportStale();
       scheduleDraftSave();
     });
 
@@ -623,6 +759,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
 
       state.responders[groupKey] = state.responders[groupKey].filter((x) => x.id !== person.id);
       if (!state.responders[groupKey].length) state.responders[groupKey].push(createResponder(groupKey));
+      markReportStale();
       renderResponders();
       scheduleDraftSave();
     });
@@ -640,6 +777,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
           person.isDriver = false;
           person.isCrewLeader = false;
         }
+        markReportStale();
         renderResponders();
         scheduleDraftSave();
       });
@@ -660,6 +798,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
         }
 
         person.isDriver = !person.isDriver;
+        markReportStale();
         renderResponders();
         scheduleDraftSave();
       });
@@ -676,6 +815,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
         }
 
         person.isCrewLeader = !person.isCrewLeader;
+        markReportStale();
         renderResponders();
         scheduleDraftSave();
       });
@@ -708,15 +848,20 @@ function renderResponderGroup(groupKey, containerId, destinations) {
           const willBeOic = !person.oic;
           clearAllOic();
           person.oic = willBeOic;
+          markReportStale();
           renderResponders();
           scheduleDraftSave();
           return;
         }
 
         person[key] = !person[key];
+        if (key === "injured") {
+          syncInjuriesFlagButton();
+        }
         btn.classList.toggle("active", person[key]);
         updateOicBanner();
         updateReportSummary();
+        markReportStale();
         scheduleDraftSave();
       });
 
@@ -735,6 +880,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       addBtn.textContent = "Add Member";
       addBtn.addEventListener("click", () => {
         state.responders[groupKey].push(createResponder(groupKey));
+        markReportStale();
         renderResponders();
         scheduleDraftSave();
       });
@@ -780,73 +926,136 @@ function buildResponderRoleLabel(r) {
   const roles = [];
   if (r.isDriver) roles.push("Driver");
   if (r.isCrewLeader) roles.push("CL");
-  return roles.length ? roles.join("/") : "Crew";
+  return roles.join(" ");
+}
+
+function formatResponderName(r) {
+  if (!r.name.trim()) return "";
+  if (r.brigade === "CONN" || !r.brigade) return r.name.trim();
+  return `${r.name.trim()} (${r.brigade})`;
+}
+
+function formatResponderFlags(r) {
+  const parts = [];
+  if (r.isDriver) parts.push("Driver");
+  if (r.isCrewLeader) parts.push("CL");
+  if (r.oic) parts.push("OIC");
+  if (r.ba) parts.push("BA");
+  return parts.join(" ");
+}
+
+function buildPagerDateTime() {
+  const date = state.incident.pagerDate || "";
+  const time = state.incident.pagerTime || "";
+  return [date, time].filter(Boolean).join(" ");
+}
+
+function buildApplianceCodeLine() {
+  const parts = [];
+  if (state.responders.applianceCodes.t1) parts.push(`T1 ${state.responders.applianceCodes.t1}`);
+  if (state.responders.applianceCodes.t2) parts.push(`T2 ${state.responders.applianceCodes.t2}`);
+  if (state.responders.applianceCodes.mtd) parts.push(`MTD P/T ${state.responders.applianceCodes.mtd}`);
+  return parts.join(", ");
+}
+
+function buildWeatherLine() {
+  const a = state.incident.weather1;
+  const b = state.incident.weather2;
+  if (a && b) return `${a} and ${b}`;
+  return a || b || "";
+}
+
+function buildHosesLine() {
+  const parts = [];
+  const qty64 = Number(state.incident.hoses.hose64Qty || 0);
+  const qty38 = Number(state.incident.hoses.hose38Qty || 0);
+  const qty25 = Number(state.incident.hoses.hose25Qty || 0);
+  const other = state.incident.hoses.hoseOtherType || "";
+
+  if (qty64 > 0) parts.push(`${qty64}x64`);
+  if (qty38 > 0) parts.push(`${qty38}x38`);
+  if (qty25 > 0) parts.push(`${qty25}x25`);
+  if (other) parts.push(other);
+
+  return parts.join(", ");
+}
+
+function buildControlLine() {
+  const name = (state.incident.controlName || "").trim();
+  const role = (state.incident.brigadeRole || "").trim();
+  if (!name && !role) return "";
+
+  const controlText = name
+    ? `${name}${name.toLowerCase().endsWith("control") ? "" : " Control"}`
+    : "Control";
+
+  return role ? `${controlText} | ${role}` : controlText;
+}
+
+function buildSignalsLine() {
+  if (!state.incident.signals.length) return "";
+  return state.incident.signals
+    .map((code) => `${code} = ${CONFIG.SIGNALS[code]}`)
+    .join("; ");
+}
+
+function buildRespondersSection(lines) {
+  const groups = [
+    ["CONN T1", "T1"],
+    ["CONN T2", "T2"],
+    ["MTD P/T", "MTD P/T"],
+    ["Direct Responders", "Direct"],
+    ["Station Responders", "Station"]
+  ];
+
+  const all = getAllResponders();
+  const hasAny = groups.some(([, code]) => all.some((r) => r.destination === code && r.name.trim()));
+  if (!hasAny) return;
+
+  lines.push("");
+  lines.push("Responders");
+
+  groups.forEach(([title, code]) => {
+    const crew = all.filter((r) => r.destination === code && r.name.trim());
+    if (!crew.length) return;
+
+    lines.push(`${title}:`);
+    crew.forEach((r) => {
+      const base = formatResponderName(r);
+      const flags = formatResponderFlags(r);
+      lines.push(`- ${base}${flags ? ` ${flags}` : ""}`);
+    });
+  });
 }
 
 function buildReport() {
-  const all = getAllResponders();
-  const oic = all.find((r) => r.oic && r.name.trim());
-
   const lines = [];
-  lines.push("Job Details");
+
   pushLine(lines, "Event Number", state.incident.eventNumber);
-  pushLine(lines, "Pager Date", state.incident.pagerDate);
-  pushLine(lines, "Pager Time", state.incident.pagerTime);
-  pushLine(lines, "Brigade Code", state.incident.brigadeCode);
-  pushLine(lines, "Primary / Support", state.incident.brigadeRole);
-  pushLine(lines, "Incident Type / Class", state.incident.incidentType);
-  pushLine(lines, "Code Level", state.incident.codeLevel);
-  pushLine(lines, "Address", state.incident.address);
-  pushLine(lines, "FIRS Code", state.incident.firsCode);
-  pushLine(lines, "Brigades on Scene", state.incident.brigadesOnScene.join(", "));
+  pushLine(lines, "Pager Date / Time", buildPagerDateTime());
+  pushLine(lines, "Appliance Codes", buildApplianceCodeLine());
 
-  if (oic) {
+  if (state.incident.pagerDetails.trim()) {
     lines.push("");
-    lines.push("OIC");
-    pushLine(lines, "Name", oic.name);
-    pushLine(lines, "Phone", oic.phone);
+    lines.push("Pager Details");
+    lines.push(state.incident.pagerDetails.trim());
   }
 
-  const appliances = [
-    ["Conn T1", "T1"],
-    ["Conn T2", "T2"],
-    ["MTD P/T", "MTD P/T"]
-  ];
+  pushLine(lines, "Actual Location", state.incident.actualLocation);
+  pushLine(lines, "Control", buildControlLine());
 
-  const applianceSections = [];
-  appliances.forEach(([title, code]) => {
-    const crew = all.filter((r) => r.destination === code && r.name.trim());
-    if (crew.length) {
-      applianceSections.push(title);
-      crew.forEach((r) => {
-        applianceSections.push(`- ${r.name}${responderSuffix(r)} | ${buildResponderRoleLabel(r)}`);
-      });
-    }
-  });
-
-  if (applianceSections.length) {
-    lines.push("");
-    lines.push("Appliances");
-    lines.push(...applianceSections);
-  }
-
-  const direct = all.filter((r) => r.destination === "Direct" && r.name.trim());
-  if (direct.length) {
-    lines.push("");
-    lines.push("Direct Responders");
-    direct.forEach((r) => lines.push(`- ${r.name}${responderSuffix(r)}`));
-  }
-
-  const station = all.filter((r) => r.destination === "Station" && r.name.trim());
-  if (station.length) {
-    lines.push("");
-    lines.push("Station Responders");
-    station.forEach((r) => lines.push(`- ${r.name}${responderSuffix(r)}`));
-  }
+  const firstAgency = state.incident.firstAgency === "Other"
+    ? state.incident.firstAgencyOther
+    : state.incident.firstAgency;
+  pushLine(lines, "First Agency On Scene", firstAgency);
+  pushLine(lines, "Brigades On Scene", state.incident.brigadesOnScene.join(", "));
+  pushLine(lines, "Weather", buildWeatherLine());
+  pushLine(lines, "Distance to Scene", state.incident.distanceToScene);
+  pushLine(lines, "Hoses Used", buildHosesLine());
 
   if (state.agencies.length) {
     lines.push("");
-    lines.push("Agencies");
+    lines.push("Agency Details");
     state.agencies.forEach((a, i) => {
       lines.push(`${i + 1}. ${a.type === "Other" ? (a.otherName || "Other") : a.type}`);
       pushLine(lines, "Officer", a.officerName);
@@ -857,46 +1066,43 @@ function buildReport() {
     });
   }
 
-  const firstAgency = state.incident.firstAgency === "Other" ? state.incident.firstAgencyOther : state.incident.firstAgency;
-  if (firstAgency) {
-    lines.push("");
-    lines.push("First Agency On Scene");
-    lines.push(firstAgency);
-  }
+  pushLine(lines, "FIRS Code", state.incident.firsCode);
 
-  if (state.incident.notes.trim()) {
+  buildRespondersSection(lines);
+
+  if (state.incident.comments.trim()) {
     lines.push("");
-    lines.push("Notes");
-    lines.push(state.incident.notes.trim());
+    lines.push("Comments");
+    lines.push(state.incident.comments.trim());
   }
 
   const flags = [];
-  if (state.incident.flags.membersBefore) flags.push("Members before 1st appliance");
+  if (state.incident.flags.membersBefore) flags.push("Members direct before 1st appliance");
   if (state.incident.flags.aar) flags.push("AAR required");
-  if (state.incident.flags.hotDebrief) flags.push("Hot debrief conducted");
+  if (isInjuriesFlagActive()) flags.push("Injuries");
 
-  if (flags.length) {
+  const signalsLine = buildSignalsLine();
+
+  if (flags.length || state.incident.injuryNotes.trim() || signalsLine) {
     lines.push("");
     lines.push("Incident Flags");
     flags.forEach((f) => lines.push(`- ${f}`));
+    if (state.incident.injuryNotes.trim()) {
+      lines.push(`Injury Notes: ${state.incident.injuryNotes.trim()}`);
+    }
+    if (signalsLine) {
+      lines.push(`Signal: ${signalsLine}`);
+    }
   }
 
   lines.push("");
-  lines.push("Sign-off");
+  lines.push("Created by");
   pushLine(lines, "Name", state.profile.name);
   pushLine(lines, "Brigade", state.profile.brigade);
   pushLine(lines, "CFA Member Number", state.profile.memberNumber);
   pushLine(lines, "Contact Number", state.profile.contactNumber);
 
   return lines.join("\n");
-}
-
-function responderSuffix(r) {
-  const flags = [];
-  if (r.oic) flags.push("OIC");
-  if (r.ba) flags.push("BA");
-  if (r.injured) flags.push("Injured");
-  return flags.length ? " – " + flags.join(", ") : "";
 }
 
 function pushLine(lines, label, value) {
@@ -911,7 +1117,7 @@ function getValidationIssues() {
   const needsOic = state.incident.brigadeCode.trim().toUpperCase().startsWith("CONN");
 
   if (!state.incident.eventNumber.trim()) issues.push("Event Number");
-  if (!state.incident.incidentType.trim()) issues.push("Incident Type");
+  if (!buildPagerDateTime().trim()) issues.push("Pager Date / Time");
   if (!state.incident.address.trim()) issues.push("Address");
   if (!hasResponder) issues.push("Responder");
   if (needsOic && !hasOic) issues.push("OIC");
@@ -936,7 +1142,8 @@ function generateReportFlow() {
 
   if (issues.length) {
     el("validationText").textContent = "Complete the missing fields below before generating the report.";
-    el("finishActions").classList.add("hidden");
+    state.ui.reportGenerated = false;
+    updateReportActionState();
     return;
   }
 
@@ -949,7 +1156,8 @@ function generateReportFlow() {
   const report = buildReport();
   el("reportPreview").value = report;
   saveCurrentReport({ dedupe: true, silent: true });
-  el("finishActions").classList.remove("hidden");
+  state.ui.reportGenerated = true;
+  updateReportActionState();
   updateReportSummary();
 }
 
@@ -1015,6 +1223,8 @@ function renderSavedReports() {
       el("reportPreview").value = r.body;
       showPage("sendPage");
       el("validationText").textContent = "Saved report loaded for review.";
+      state.ui.reportGenerated = true;
+      updateReportActionState();
     });
 
     delBtn.addEventListener("click", () => {
@@ -1089,17 +1299,33 @@ function renderIncidentFields() {
   el("brigadeCode").value = state.incident.brigadeCode;
   el("brigadeRole").value = state.incident.brigadeRole;
   el("incidentType").value = state.incident.incidentType;
-  el("codeLevel").value = state.incident.codeLevel;
+  el("pagerDetails").value = state.incident.pagerDetails;
   el("address").value = state.incident.address;
+  el("actualLocation").value = state.incident.actualLocation;
+  el("controlName").value = state.incident.controlName;
   el("firsCode").value = state.incident.firsCode;
-  el("notes").value = state.incident.notes;
+  el("comments").value = state.incident.comments;
+  el("injuryNotes").value = state.incident.injuryNotes;
   el("firstAgency").value = state.incident.firstAgency;
   el("firstAgencyOther").value = state.incident.firstAgencyOther;
   el("firstAgencyOther").classList.toggle("hidden", state.incident.firstAgency !== "Other");
 
+  el("weather1").value = state.incident.weather1;
+  el("weather2").value = state.incident.weather2;
+  el("distanceToScene").value = state.incident.distanceToScene;
+  el("hose64Qty").value = state.incident.hoses.hose64Qty;
+  el("hose38Qty").value = state.incident.hoses.hose38Qty;
+  el("hose25Qty").value = state.incident.hoses.hose25Qty;
+  el("hoseOtherType").value = state.incident.hoses.hoseOtherType;
+
   el("flagMembersBeforeBtn").classList.toggle("active", state.incident.flags.membersBefore);
   el("flagAarBtn").classList.toggle("active", state.incident.flags.aar);
-  el("flagHotDebriefBtn").classList.toggle("active", state.incident.flags.hotDebrief);
+  syncInjuriesFlagButton();
+  syncSignalButtons();
+
+  el("t1Code").value = state.responders.applianceCodes.t1;
+  el("t2Code").value = state.responders.applianceCodes.t2;
+  el("mtdCode").value = state.responders.applianceCodes.mtd;
 
   if (state.ui.previewUrl) {
     el("pagerPreview").src = state.ui.previewUrl;
@@ -1121,6 +1347,7 @@ function renderEverything() {
   updateConnectionBanner();
   updateReportSummary();
   renderValidationIssues(getValidationIssues());
+  updateReportActionState();
   showPage(state.ui.currentPage);
   renderDraftRestoreBanner();
 }
@@ -1134,7 +1361,12 @@ function updateReportSummary() {
   const applianceCount = ["T1", "T2", "MTD P/T"].filter((code) => all.some((r) => r.destination === code && r.name.trim())).length;
   const directCount = all.filter((r) => r.destination === "Direct" && r.name.trim()).length;
   const stationCount = all.filter((r) => r.destination === "Station" && r.name.trim()).length;
-  const flagsCount = Object.values(state.incident.flags).filter(Boolean).length;
+  const flagsCount = [
+    state.incident.flags.membersBefore,
+    state.incident.flags.aar,
+    isInjuriesFlagActive(),
+    state.incident.signals.length > 0
+  ].filter(Boolean).length;
 
   const items = [
     ["Event", state.incident.eventNumber || "Not set"],
@@ -1177,7 +1409,7 @@ function isMeaningfulDraft(payload) {
     incident?.brigadeCode ||
     incident?.incidentType ||
     incident?.address ||
-    incident?.notes ||
+    incident?.comments ||
     incident?.brigadesOnScene?.length ||
     agencies?.length ||
     responders?.connewarre?.some((r) => r.name?.trim()) ||
@@ -1219,7 +1451,12 @@ function restoreDraftIfPresent() {
     state.incident = { ...state.incident, ...payload.incident };
     state.responders = {
       connewarre: Array.isArray(payload.responders?.connewarre) ? payload.responders.connewarre : [],
-      mtd: Array.isArray(payload.responders?.mtd) ? payload.responders.mtd : []
+      mtd: Array.isArray(payload.responders?.mtd) ? payload.responders.mtd : [],
+      applianceCodes: {
+        t1: payload.responders?.applianceCodes?.t1 || "",
+        t2: payload.responders?.applianceCodes?.t2 || "",
+        mtd: payload.responders?.applianceCodes?.mtd || ""
+      }
     };
     state.agencies = Array.isArray(payload.agencies) ? payload.agencies : [];
     state.ui.currentPage = payload.ui?.currentPage || "incidentPage";
