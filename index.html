@@ -326,33 +326,34 @@
             <button id="saveDraftBtnResponders" class="secondary-btn" type="button">Save Draft</button>
           </div>
 
-        <div class="section">
+<div class="section">
   <h3>Appliance Codes</h3>
-  <div class="grid">
-    <label>
-      T1 Code
-      <select id="t1Code">
-        <option value="">Not selected</option>
-        <option value="C1">C1</option>
-        <option value="C3">C3</option>
-      </select>
-    </label>
-    <label>
-      T2 Code
-      <select id="t2Code">
-        <option value="">Not selected</option>
-        <option value="C1">C1</option>
-        <option value="C3">C3</option>
-      </select>
-    </label>
-    <label>
-      MTD P/T Code
-      <select id="mtdCode">
-        <option value="">Not selected</option>
-        <option value="C1">C1</option>
-        <option value="C3">C3</option>
-      </select>
-    </label>
+
+  <div class="responder-stage">
+    <div class="stage-label">Conn T1</div>
+    <div class="chips">
+      <button id="t1CodeC1Btn" class="chip-btn" type="button">C1</button>
+      <button id="t1CodeC3Btn" class="chip-btn" type="button">C3</button>
+      <button id="t1CodeClearBtn" class="chip-btn" type="button">Remove</button>
+    </div>
+  </div>
+
+  <div class="responder-stage">
+    <div class="stage-label">Conn T2</div>
+    <div class="chips">
+      <button id="t2CodeC1Btn" class="chip-btn" type="button">C1</button>
+      <button id="t2CodeC3Btn" class="chip-btn" type="button">C3</button>
+      <button id="t2CodeClearBtn" class="chip-btn" type="button">Remove</button>
+    </div>
+  </div>
+
+  <div class="responder-stage">
+    <div class="stage-label">MTD P/T</div>
+    <div class="chips">
+      <button id="mtdCodeC1Btn" class="chip-btn" type="button">C1</button>
+      <button id="mtdCodeC3Btn" class="chip-btn" type="button">C3</button>
+      <button id="mtdCodeClearBtn" class="chip-btn" type="button">Remove</button>
+    </div>
   </div>
 </div>
 
