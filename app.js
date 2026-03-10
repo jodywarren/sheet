@@ -1,5 +1,5 @@
 const CONFIG = {
-  APP_VERSION: "2.0.3",
+  APP_VERSION: "2.0.4",
   MAX_REPORTS: 10,
   DRAFT_SAVE_DELAY_MS: 300,
   QUIET_HOURS_START: 22,
@@ -14,9 +14,9 @@ const CONFIG = {
 };
 
 const STORAGE_KEYS = {
-  PROFILE: "turnout_profile_v203",
-  REPORTS: "turnout_reports_v203",
-  DRAFT: "turnout_draft_v203"
+  PROFILE: "turnout_profile_v204",
+  REPORTS: "turnout_reports_v204",
+  DRAFT: "turnout_draft_v204"
 };
 
 const MEMBER_FILES = {
@@ -25,49 +25,53 @@ const MEMBER_FILES = {
   FRES: "FRES.members.json"
 };
 
+const DEFAULT_INCIDENT = () => ({
+  eventNumber: "F",
+  pagerDate: "",
+  pagerTime: "",
+  brigadeCode: "",
+  brigadeRole: "",
+  incidentType: "",
+  pagerDetails: "",
+  actualLocation: "",
+  controlName: "",
+  firsCode: "",
+  brigadesOnScene: [],
+  firstAgency: "",
+  firstAgencyOther: "",
+  weather1: "",
+  weather2: "",
+  distanceToScene: "",
+  comments: "",
+  injuryNotes: "",
+  hoses: {
+    hose64Qty: "0",
+    hose38Qty: "0",
+    hose25Qty: "0",
+    hoseOtherType: ""
+  },
+  flags: {
+    membersBefore: false,
+    aar: false,
+    hotDebrief: false,
+    injuriesManual: false
+  },
+  signals: []
+});
+
+const DEFAULT_RESPONDERS = () => ({
+  connewarre: [],
+  mtd: [],
+  applianceCodes: {
+    t1: "",
+    t2: "",
+    mtd: ""
+  }
+});
+
 const state = {
-  incident: {
-    eventNumber: "F",
-    pagerDate: "",
-    pagerTime: "",
-    brigadeCode: "",
-    brigadeRole: "",
-    incidentType: "",
-    pagerDetails: "",
-    actualLocation: "",
-    controlName: "",
-    firsCode: "",
-    brigadesOnScene: [],
-    firstAgency: "",
-    firstAgencyOther: "",
-    weather1: "",
-    weather2: "",
-    distanceToScene: "",
-    comments: "",
-    injuryNotes: "",
-    hoses: {
-      hose64Qty: "0",
-      hose38Qty: "0",
-      hose25Qty: "0",
-      hoseOtherType: ""
-    },
-    flags: {
-      membersBefore: false,
-      aar: false,
-      hotDebrief: false,
-      injuriesManual: false
-    },
-    signals: []
-  },
-  responders: {
-    connewarre: [],
-    mtd: [],
-    applianceCodes: {
-      t1: "",
-      t2: "",
-      mtd: ""
-    }
-  },
+  incident: DEFAULT_INCIDENT(),
+  responders: DEFAULT_RESPONDERS(),
   agencies: [],
   profile: {
     name: "",
@@ -106,12 +110,10 @@ async function init() {
   restoreDraftIfPresent();
   normaliseResponderState();
   ensureRows();
-
   bindStaticEvents();
   bindIncidentEvents();
   bindConnectionEvents();
   registerServiceWorker();
-
   renderEverything();
   updateConnectionBanner();
   updateDraftMeta("Draft autosave ready.");
@@ -136,65 +138,6 @@ function uid() {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
-}
-
-function getWeatherConflicts() {
-  return {
-    Hot: ["Cold"],
-    Cold: ["Hot"],
-    Calm: ["Windy", "Very Windy", "Stormy"],
-    Windy: ["Calm"],
-    "Very Windy": ["Calm"],
-    Sunny: ["Overcast", "Cloudy", "Rain", "Showers", "Stormy"],
-    Overcast: ["Sunny"],
-    Cloudy: ["Sunny"],
-    Rain: ["Sunny"],
-    Showers: ["Sunny"],
-    Stormy: ["Sunny", "Calm"]
-  };
-}
-
-function areWeatherOptionsCompatible(weather1, weather2) {
-  if (!weather1 || !weather2) return true;
-  if (weather1 === weather2) return false;
-
-  const conflicts = getWeatherConflicts();
-  const blockedByOne = conflicts[weather1] || [];
-  const blockedByTwo = conflicts[weather2] || [];
-
-  return !blockedByOne.includes(weather2) && !blockedByTwo.includes(weather1);
-}
-
-function syncWeather2Visibility() {
-  const wrap = el("weather2Wrap");
-  if (!wrap) return;
-  wrap.classList.toggle("hidden", !state.incident.weather1);
-}
-
-function syncWeather2Options() {
-  const select = el("weather2");
-  if (!select) return;
-
-  const weather1 = state.incident.weather1;
-
-  Array.from(select.options).forEach((option) => {
-    const value = option.value;
-
-    if (!value) {
-      option.hidden = false;
-      option.disabled = false;
-      return;
-    }
-
-    const allowed = areWeatherOptionsCompatible(weather1, value);
-    option.hidden = weather1 ? !allowed : false;
-    option.disabled = weather1 ? !allowed : false;
-  });
-
-  if (!areWeatherOptionsCompatible(state.incident.weather1, state.incident.weather2)) {
-    state.incident.weather2 = "";
-    select.value = "";
-  }
 }
 
 function setAppVersion() {
@@ -273,6 +216,23 @@ function createResponder(group) {
   };
 }
 
+function resetForNewPagerUpload() {
+  state.incident = DEFAULT_INCIDENT();
+  state.responders = DEFAULT_RESPONDERS();
+  state.agencies = [];
+  state.ui.currentPage = "incidentPage";
+  state.ui.reportGenerated = false;
+  state.ui.hosesOpen = false;
+
+  ensureRows();
+
+  if (el("reportPreview")) el("reportPreview").value = "";
+  if (el("validationText")) el("validationText").textContent = "";
+  if (el("validationChips")) el("validationChips").innerHTML = "";
+
+  updateReportActionState();
+}
+
 function normaliseResponderState() {
   ["connewarre", "mtd"].forEach((groupKey) => {
     state.responders[groupKey] = (state.responders[groupKey] || []).map((person) => {
@@ -293,8 +253,12 @@ function normaliseResponderState() {
 }
 
 function ensureRows() {
-  if (!state.responders.connewarre.length) state.responders.connewarre.push(createResponder("connewarre"));
-  if (!state.responders.mtd.length) state.responders.mtd.push(createResponder("mtd"));
+  if (!state.responders.connewarre.length) {
+    state.responders.connewarre.push(createResponder("connewarre"));
+  }
+  if (!state.responders.mtd.length) {
+    state.responders.mtd.push(createResponder("mtd"));
+  }
 }
 
 function getAllResponders() {
@@ -533,6 +497,65 @@ function reloadForUpdate() {
   window.location.reload();
 }
 
+function getWeatherConflicts() {
+  return {
+    Hot: ["Cold"],
+    Cold: ["Hot"],
+    Calm: ["Windy", "Very Windy", "Stormy"],
+    Windy: ["Calm"],
+    "Very Windy": ["Calm"],
+    Sunny: ["Overcast", "Cloudy", "Rain", "Showers", "Stormy"],
+    Overcast: ["Sunny"],
+    Cloudy: ["Sunny"],
+    Rain: ["Sunny"],
+    Showers: ["Sunny"],
+    Stormy: ["Sunny", "Calm"]
+  };
+}
+
+function areWeatherOptionsCompatible(weather1, weather2) {
+  if (!weather1 || !weather2) return true;
+  if (weather1 === weather2) return false;
+
+  const conflicts = getWeatherConflicts();
+  const blockedByOne = conflicts[weather1] || [];
+  const blockedByTwo = conflicts[weather2] || [];
+
+  return !blockedByOne.includes(weather2) && !blockedByTwo.includes(weather1);
+}
+
+function syncWeather2Visibility() {
+  const wrap = el("weather2Wrap");
+  if (!wrap) return;
+  wrap.classList.toggle("hidden", !state.incident.weather1);
+}
+
+function syncWeather2Options() {
+  const select = el("weather2");
+  if (!select) return;
+
+  const weather1 = state.incident.weather1;
+
+  Array.from(select.options).forEach((option) => {
+    const value = option.value;
+
+    if (!value) {
+      option.hidden = false;
+      option.disabled = false;
+      return;
+    }
+
+    const allowed = areWeatherOptionsCompatible(weather1, value);
+    option.hidden = weather1 ? !allowed : false;
+    option.disabled = weather1 ? !allowed : false;
+  });
+
+  if (!areWeatherOptionsCompatible(state.incident.weather1, state.incident.weather2)) {
+    state.incident.weather2 = "";
+    select.value = "";
+  }
+}
+
 function markReportStale() {
   state.ui.reportGenerated = false;
   updateReportActionState();
@@ -556,15 +579,17 @@ async function handleImageUpload(e) {
   const file = e.target.files?.[0];
   if (!file) return;
 
-  const dataUrl = await fileToDataUrl(file);
+  resetForNewPagerUpload();
 
+  const dataUrl = await fileToDataUrl(file);
   state.ui.previewUrl = dataUrl;
+
   el("pagerPreview").src = dataUrl;
   el("pagerPreview").classList.remove("hidden");
   el("pagerPreviewEmpty").classList.add("hidden");
   el("scanStatus").textContent = `Loaded ${file.name}. Reading pager...`;
 
-  markReportStale();
+  renderEverything();
   scheduleDraftSave();
 
   await runPagerOcr(dataUrl);
@@ -597,7 +622,9 @@ async function runPagerOcr(imageSrc) {
   try {
     el("scanStatus").textContent = "Reading pager screenshot...";
 
-    const result = await Tesseract.recognize(imageSrc, "eng", {
+    const processedImage = await preprocessImageForOcr(imageSrc);
+
+    const result = await Tesseract.recognize(processedImage, "eng", {
       logger: (msg) => {
         if (msg.status === "recognizing text" && typeof msg.progress === "number") {
           el("scanStatus").textContent = `Reading pager screenshot... ${Math.round(msg.progress * 100)}%`;
@@ -610,7 +637,9 @@ async function runPagerOcr(imageSrc) {
     const blocks = extractEmergencyBlocks(normalizedText);
 
     if (!blocks.length) {
-      el("scanStatus").textContent = "No EMERGENCY pager block found.";
+      state.incident.pagerDetails = normalizedText || rawText || "";
+      renderEverything();
+      el("scanStatus").textContent = "OCR read text, but could not confidently find the emergency block. Pager text has been placed in Pager Details.";
       return;
     }
 
@@ -621,7 +650,9 @@ async function runPagerOcr(imageSrc) {
       mergedEvents[0];
 
     if (!selectedEvent) {
-      el("scanStatus").textContent = "Pager text found, but no event could be parsed.";
+      state.incident.pagerDetails = normalizedText || rawText || "";
+      renderEverything();
+      el("scanStatus").textContent = "Pager text found, but no event could be parsed. Raw text has been placed in Pager Details.";
       return;
     }
 
@@ -636,51 +667,105 @@ async function runPagerOcr(imageSrc) {
   }
 }
 
-function normalizeOcrText(text) {
-  return String(text || "")
+async function preprocessImageForOcr(imageSrc) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const gray = Math.round((r + g + b) / 3);
+        const boosted = gray > 140 ? 255 : gray < 70 ? 0 : gray;
+
+        data[i] = boosted;
+        data[i + 1] = boosted;
+        data[i + 2] = boosted;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+
+    img.onerror = reject;
+    img.src = imageSrc;
+  });
+}
+
+function normalizeOcrText(textValue) {
+  return String(textValue || "")
     .replace(/\r/g, "")
     .replace(/[|]/g, "1")
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .replace(/[—–]/g, "-")
+    .replace(/EMERGENCV/g, "EMERGENCY")
+    .replace(/EMERGENC Y/g, "EMERGENCY")
+    .replace(/ALARCI/g, "ALARC1")
+    .replace(/STRUCI/g, "STRUC1")
+    .replace(/INCII/g, "INCI1")
+    .replace(/RESCCI/g, "RESCC1")
     .replace(/[^\S\n]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .toUpperCase()
     .trim();
 }
 
-function extractEmergencyBlocks(text) {
-  const lines = text
+function extractEmergencyBlocks(normalizedText) {
+  const rawLines = normalizedText
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
 
+  const lines = [];
+
+  rawLines.forEach((line) => {
+    const splitEmergency = line.replace(/(EMERGENCY)(\d{2}:\d{2}:\d{2})/g, "$1\n$2");
+    splitEmergency.split("\n").forEach((part) => {
+      const clean = part.trim();
+      if (clean) lines.push(clean);
+    });
+  });
+
   const blocks = [];
+  const isEmergencyLike = (line) =>
+    /EMERGEN/.test(line) || (/ALERT /.test(line) && /F\d{6,}/.test(normalizedText));
 
   for (let i = 0; i < lines.length; i += 1) {
-    if (!lines[i].includes("EMERGENCY")) continue;
+    if (!isEmergencyLike(lines[i])) continue;
 
     const blockLines = [];
-    blockLines.push(lines[i]);
+    let foundAlert = false;
 
-    for (let j = i + 1; j < lines.length; j += 1) {
+    for (let j = i; j < lines.length; j += 1) {
       const line = lines[j];
 
-      if (j > i + 1 && line.includes("EMERGENCY")) break;
-      if (line.includes("SINCE ALERT")) break;
-      if (line.includes("RESPOND")) break;
-      if (line.includes("REVIEW")) break;
-      if (line.includes("NON-EMERGENCY")) break;
-      if (line.includes("ADMIN")) break;
+      if (j > i && /NON-EMERGENCY|ADMIN/.test(line)) break;
+      if (j > i && /EMERGEN/.test(line) && blockLines.length >= 4) break;
+
+      if (/RESPOND|REVIEW/.test(line)) continue;
+      if (/SINCE ALERT/.test(line)) continue;
 
       blockLines.push(line);
 
-      if (/F\d{6,}/.test(line)) break;
-      if (blockLines.length >= 8) break;
+      if (line.includes("ALERT ")) foundAlert = true;
+      if (/F\d{6,}/.test(line) && foundAlert) break;
+      if (blockLines.length >= 10 && foundAlert) break;
     }
 
     const parsed = parseEmergencyBlock(blockLines);
-    if (parsed.eventNumber || parsed.alertLine) {
+    if (parsed.eventNumber || parsed.alertLine || parsed.rawText.includes("ALERT ")) {
       blocks.push(parsed);
     }
   }
@@ -705,7 +790,6 @@ function parseEmergencyBlock(lines) {
   const alertLineMatch = alertAndBody.match(/ALERT\s+([A-Z0-9]+)\s+([A-Z]{4})C([13])\b/);
   const brigadeCode = alertLineMatch?.[1] || "";
   const incidentType = alertLineMatch?.[2] || "";
-  const codeLevel = alertLineMatch?.[3] ? `C${alertLineMatch[3]}` : "";
 
   const actualLocation = extractActualLocation(alertAndBody);
   const units = extractPagedUnits(flatText, eventNumber);
@@ -718,33 +802,46 @@ function parseEmergencyBlock(lines) {
     eventNumber,
     brigadeCode,
     incidentType,
-    codeLevel,
     actualLocation,
     units,
     alertLine: alertLineMatch?.[0] || ""
   };
 }
 
-function extractActualLocation(text) {
-  const noEvent = text.replace(/F\d{6,}.*/g, " ");
+function extractActualLocation(textValue) {
+  const noEvent = textValue.replace(/F\d{6,}.*/g, " ");
   const locationMatch = noEvent.match(
-    /\b(\d+\s+[A-Z0-9 ]+?(?:ST|RD|AV|AVE|DR|BVD|BLVD|HWY|CT|CRT|CRES|PL|WAY|LANE|LN)\s+[A-Z ]+?)(?=\s*\/|\s+M\s+\d+)/i
+    /\b(\d+\s+[A-Z0-9 ]+?(?:ST|RD|AV|AVE|DR|BVD|BLVD|HWY|CT|CRT|CRES|PL|WAY|LANE|LN)\s+[A-Z ]+?)(?=\s*(?:\/|\/\/|\sJ[A-Z]|\s+M\s+\d+))/i
   );
 
-  if (!locationMatch) return "";
+  if (locationMatch?.[1]) {
+    return cleanLocation(locationMatch[1]);
+  }
 
-  return cleanLocation(locationMatch[1]);
+  const roughLineMatch = noEvent.match(/\b\d+\s+[A-Z0-9 ].+?(?=\s+M\s+\d+|F\d{6,}|$)/i);
+  return cleanLocation(roughLineMatch?.[0] || "");
 }
 
 function cleanLocation(value) {
-  return String(value || "")
-    .split("/")[0]
+  let cleaned = String(value || "")
     .replace(/\s+/g, " ")
     .trim();
+
+  cleaned = cleaned
+    .replace(/\s\/\/\s*/g, " / ")
+    .replace(/\s\/\s*/g, " / ")
+    .replace(/\sJ(?=[A-Z]{2,})/g, " /");
+
+  const separatorMatch = cleaned.match(/\s\/|\/\/|\sJ(?=[A-Z]{2,})/);
+  if (separatorMatch) {
+    cleaned = cleaned.slice(0, separatorMatch.index).trim();
+  }
+
+  return cleaned;
 }
 
-function extractPagedUnits(text, eventNumber) {
-  let working = text;
+function extractPagedUnits(textValue, eventNumber) {
+  let working = textValue;
 
   if (eventNumber) {
     working = working.replace(eventNumber, " ");
@@ -809,7 +906,6 @@ function mergeEmergencyBlocks(blocks) {
         pagerTime: block.pagerTime,
         brigadeCode: block.brigadeCode,
         incidentType: block.incidentType,
-        codeLevel: block.codeLevel,
         actualLocation: block.actualLocation,
         units: [...block.units],
         pagerDetailsParts: [block.rawText],
@@ -827,7 +923,6 @@ function mergeEmergencyBlocks(blocks) {
 
     existing.brigadeCode = existing.brigadeCode || block.brigadeCode;
     existing.incidentType = existing.incidentType || block.incidentType;
-    existing.codeLevel = existing.codeLevel || block.codeLevel;
     existing.actualLocation = existing.actualLocation || block.actualLocation;
 
     block.units.forEach((unit) => {
@@ -893,9 +988,164 @@ function populateIncidentFromOcr(parsed) {
   scheduleDraftSave();
 }
 
-function bindConnectionEvents() {
-  window.addEventListener("online", updateConnectionBanner);
-  window.addEventListener("offline", updateConnectionBanner);
+function addSceneBrigade() {
+  let value = el("sceneBrigadeSelect").value;
+  if (!value) return;
+
+  if (value === "Other") value = el("sceneBrigadeOther").value.trim().toUpperCase();
+  if (!value) return;
+
+  if (!state.incident.brigadesOnScene.includes(value)) {
+    state.incident.brigadesOnScene.push(value);
+  }
+
+  el("sceneBrigadeSelect").value = "";
+  el("sceneBrigadeOther").value = "";
+  el("sceneBrigadeOther").classList.add("hidden");
+
+  markReportStale();
+  renderSceneBrigades();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function renderSceneBrigades() {
+  const wrap = el("sceneBrigadeChips");
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+
+  state.incident.brigadesOnScene.forEach((code) => {
+    const chip = document.createElement("div");
+    chip.className = "scene-chip";
+    chip.innerHTML = `<span>${text(code)}</span><button type="button" aria-label="Remove ${text(code)}">×</button>`;
+    chip.querySelector("button").addEventListener("click", () => {
+      state.incident.brigadesOnScene = state.incident.brigadesOnScene.filter((x) => x !== code);
+      markReportStale();
+      renderSceneBrigades();
+      scheduleDraftSave();
+      updateReportSummary();
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+function autoAddAgencyFromSelect() {
+  const select = el("agencyType");
+  const type = select.value;
+  if (!type) return;
+
+  state.agencies.push({
+    id: uid(),
+    type,
+    otherName: "",
+    officerName: "",
+    contactNumber: "",
+    station: "",
+    badgeNumber: "",
+    comments: ""
+  });
+
+  select.value = "";
+  markReportStale();
+  renderAgencies();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function renderAgencies() {
+  const wrap = el("agencyBlocks");
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+
+  state.agencies.forEach((agency) => {
+    const block = document.createElement("div");
+    block.className = "agency-block";
+    block.innerHTML = `
+      <div class="row between">
+        <strong>${text(agency.type)}</strong>
+        <button class="tiny-btn" type="button">Remove</button>
+      </div>
+      <div class="grid">
+        ${agency.type === "Other" ? `<label>Other Agency Name<input data-field="otherName" type="text" value="${text(agency.otherName)}"></label>` : ""}
+        <label>Officer Name<input data-field="officerName" type="text" value="${text(agency.officerName)}"></label>
+        <label>Contact Number<input data-field="contactNumber" type="text" inputmode="tel" value="${text(agency.contactNumber)}"></label>
+        <label>Station<input data-field="station" type="text" value="${text(agency.station)}"></label>
+        <label>Badge Number<input data-field="badgeNumber" type="text" inputmode="numeric" value="${text(agency.badgeNumber)}"></label>
+        <label class="full">Comments<textarea data-field="comments" rows="2">${text(agency.comments)}</textarea></label>
+      </div>
+    `;
+
+    block.querySelector("button").addEventListener("click", () => {
+      const confirmed = window.confirm(`Remove agency entry for ${agency.type}?`);
+      if (!confirmed) return;
+      state.agencies = state.agencies.filter((a) => a.id !== agency.id);
+      markReportStale();
+      renderAgencies();
+      scheduleDraftSave();
+      updateReportSummary();
+    });
+
+    block.querySelectorAll("[data-field]").forEach((field) => {
+      field.addEventListener("input", (e) => {
+        agency[e.target.dataset.field] = e.target.value;
+        markReportStale();
+        scheduleDraftSave();
+        updateReportSummary();
+      });
+    });
+
+    wrap.appendChild(block);
+  });
+}
+
+function toggleFlag(key, buttonId) {
+  state.incident.flags[key] = !state.incident.flags[key];
+  el(buttonId).classList.toggle("active", state.incident.flags[key]);
+  markReportStale();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function hasResponderInjury() {
+  return getAllResponders().some((r) => r.injured);
+}
+
+function isInjuriesFlagActive() {
+  return state.incident.flags.injuriesManual || hasResponderInjury();
+}
+
+function toggleManualInjuriesFlag() {
+  state.incident.flags.injuriesManual = !state.incident.flags.injuriesManual;
+  syncInjuriesFlagButton();
+  markReportStale();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function syncInjuriesFlagButton() {
+  el("flagInjuriesBtn")?.classList.toggle("active", isInjuriesFlagActive());
+}
+
+function toggleSignal(code) {
+  const list = state.incident.signals;
+  if (list.includes(code)) {
+    state.incident.signals = list.filter((x) => x !== code);
+  } else {
+    state.incident.signals.push(code);
+  }
+
+  syncSignalButtons();
+  markReportStale();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function syncSignalButtons() {
+  document.querySelectorAll(".signal-btn").forEach((btn) => {
+    btn.classList.toggle("active", state.incident.signals.includes(btn.dataset.signalCode));
+  });
 }
 
 function resolveResponderMemberDetails(groupKey, person) {
@@ -1047,10 +1297,6 @@ function renderResponderGroup(groupKey, containerId, destinations) {
       btn.textContent = dest;
       btn.disabled = !person.name.trim();
 
-      if (groupKey === "mtd" && dest === "MTD P/T") {
-        btn.classList.add("active");
-      }
-
       btn.addEventListener("click", () => {
         if (groupKey === "mtd") {
           person.destination = "MTD P/T";
@@ -1140,9 +1386,7 @@ function renderResponderGroup(groupKey, containerId, destinations) {
         }
 
         person[key] = !person[key];
-        if (key === "injured") {
-          syncInjuriesFlagButton();
-        }
+        if (key === "injured") syncInjuriesFlagButton();
         btn.classList.toggle("active", person[key]);
         updateOicBanner();
         updateReportSummary();
@@ -1264,17 +1508,15 @@ function buildControlLine() {
   if (!name && !role) return "";
 
   const controlText = name
-    ? `${name}${name.toLowerCase().endsWith("CONTROL") ? "" : " CONTROL"}`
-    : "CONTROL";
+    ? `${name}${name.toUpperCase().endsWith("CONTROL") ? "" : " Control"}`
+    : "Control";
 
   return role ? `${controlText} | ${role}` : controlText;
 }
 
 function buildSignalsLine() {
   if (!state.incident.signals.length) return "";
-  return state.incident.signals
-    .map((code) => `${code} = ${CONFIG.SIGNALS[code]}`)
-    .join("; ");
+  return state.incident.signals.map((code) => `${code} = ${CONFIG.SIGNALS[code]}`).join("; ");
 }
 
 function buildRespondersSection(lines) {
@@ -1345,7 +1587,6 @@ function buildReport() {
   }
 
   pushLine(lines, "FIRS Code", state.incident.firsCode);
-
   buildRespondersSection(lines);
 
   if (state.incident.comments.trim()) {
@@ -1366,12 +1607,8 @@ function buildReport() {
     lines.push("");
     lines.push("Incident Flags");
     flags.forEach((f) => lines.push(`- ${f}`));
-    if (state.incident.injuryNotes.trim()) {
-      lines.push(`Injury Notes: ${state.incident.injuryNotes.trim()}`);
-    }
-    if (signalsLine) {
-      lines.push(`Signal: ${signalsLine}`);
-    }
+    if (state.incident.injuryNotes.trim()) lines.push(`Injury Notes: ${state.incident.injuryNotes.trim()}`);
+    if (signalsLine) lines.push(`Signal: ${signalsLine}`);
   }
 
   lines.push("");
@@ -1468,9 +1705,7 @@ function saveCurrentReport(options = {}) {
   saveSavedReports();
   renderSavedReports();
 
-  if (!silent) {
-    updateDraftMeta("Report saved locally.");
-  }
+  if (!silent) updateDraftMeta("Report saved locally.");
 }
 
 function renderSavedReports() {
@@ -1708,7 +1943,12 @@ function saveDraft() {
   const payload = getDraftPayload();
   localStorage.setItem(STORAGE_KEYS.DRAFT, JSON.stringify(payload));
   state.ui.lastDraftSavedAt = payload.savedAt;
-  updateDraftMeta(`Draft autosaved ${new Date(payload.savedAt).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}.`);
+  updateDraftMeta(
+    `Draft autosaved ${new Date(payload.savedAt).toLocaleTimeString("en-AU", {
+      hour: "2-digit",
+      minute: "2-digit"
+    })}.`
+  );
 }
 
 function scheduleDraftSave() {
@@ -1734,7 +1974,7 @@ function restoreDraftIfPresent() {
     const payload = JSON.parse(raw);
     if (!isMeaningfulDraft(payload)) return;
 
-    state.incident = { ...state.incident, ...payload.incident };
+    state.incident = { ...DEFAULT_INCIDENT(), ...payload.incident };
     state.responders = {
       connewarre: Array.isArray(payload.responders?.connewarre) ? payload.responders.connewarre : [],
       mtd: Array.isArray(payload.responders?.mtd) ? payload.responders.mtd : [],
