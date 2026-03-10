@@ -1,5 +1,5 @@
 const CONFIG = {
-  APP_VERSION: "2.0.5",
+  APP_VERSION: "2.0.6",
   MAX_REPORTS: 10,
   DRAFT_SAVE_DELAY_MS: 300,
   QUIET_HOURS_START: 22,
@@ -14,9 +14,9 @@ const CONFIG = {
 };
 
 const STORAGE_KEYS = {
-  PROFILE: "turnout_profile_v205",
-  REPORTS: "turnout_reports_v205",
-  DRAFT: "turnout_draft_v205"
+  PROFILE: "turnout_profile_v206",
+  REPORTS: "turnout_reports_v206",
+  DRAFT: "turnout_draft_v206"
 };
 
 const MEMBER_FILES = {
@@ -143,6 +143,22 @@ function clone(value) {
 function setAppVersion() {
   const target = el("appVersionText");
   if (target) target.textContent = CONFIG.APP_VERSION;
+}
+
+function pagerDateToInputValue(dateText) {
+  const value = String(dateText || "").trim();
+  const match = value.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!match) return value;
+  const [, dd, mm, yyyy] = match;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function inputDateToPagerDate(dateText) {
+  const value = String(dateText || "").trim();
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  const [, yyyy, mm, dd] = match;
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 function populateDistanceDropdown() {
@@ -387,6 +403,10 @@ function bindIncidentEvents() {
       if (key === "eventNumber") {
         if (!value.startsWith("F")) value = `F${value.replace(/^F/i, "")}`;
         e.target.value = value;
+      }
+
+      if (key === "pagerDate") {
+        value = inputDateToPagerDate(value);
       }
 
       state.incident[key] = value;
@@ -640,7 +660,7 @@ async function runPagerOcr(imageSrc) {
     if (!blocks.length) {
       state.incident.pagerDetails = normalizedText || rawText || "";
       renderEverything();
-      el("scanStatus").textContent = "OCR read text, but could not confidently find the emergency block. Pager text has been placed in Pager Details.";
+      el("scanStatus").textContent = "OCR read text, but could not confidently isolate the emergency block. Pager text has been placed in Pager Details.";
       return;
     }
 
@@ -660,11 +680,20 @@ async function runPagerOcr(imageSrc) {
     populateIncidentFromOcr(selectedEvent);
     renderEverything();
 
-    el("scanStatus").textContent =
-      `OCR complete. Loaded ${selectedEvent.eventNumber || "event"} from ${selectedEvent.blockCount} pager message${selectedEvent.blockCount === 1 ? "" : "s"}.`;
+    const missingBits = [];
+    if (!state.incident.pagerDate) missingBits.push("date");
+    if (!state.incident.brigadesOnScene.length) missingBits.push("brigades");
+
+    if (missingBits.length) {
+      el("scanStatus").textContent =
+        `OCR complete with minor gaps. Loaded ${selectedEvent.eventNumber || "event"} from ${selectedEvent.blockCount} pager message${selectedEvent.blockCount === 1 ? "" : "s"}. Check ${missingBits.join(" and ")}.`;
+    } else {
+      el("scanStatus").textContent =
+        `OCR complete. Loaded ${selectedEvent.eventNumber || "event"} from ${selectedEvent.blockCount} pager message${selectedEvent.blockCount === 1 ? "" : "s"}.`;
+    }
   } catch (error) {
     console.error(error);
-    el("scanStatus").textContent = "OCR failed. Upload again or correct fields manually.";
+    el("scanStatus").textContent = "OCR failed before parsing completed. Upload again or correct fields manually.";
   }
 }
 
@@ -842,16 +871,13 @@ function cleanLocation(value) {
 }
 
 function extractPagedUnits(textValue, eventNumber) {
-  let working = textValue;
+  let working = String(textValue || "");
 
   if (eventNumber) {
     working = working.replace(eventNumber, " ");
   }
 
-  const afterMapMatch = working.match(/\)\s+(.+)$/);
-  const unitSource = afterMapMatch?.[1] || working;
-
-  const tokens = unitSource
+  const tokens = working
     .split(/\s+/)
     .map((token) => token.replace(/[^A-Z0-9]/g, ""))
     .filter(Boolean);
@@ -870,13 +896,27 @@ function extractPagedUnits(textValue, eventNumber) {
     "ADMIN",
     "FP",
     "F",
-    "AFPR"
+    "AFPR",
+    "CONNEWARRE",
+    "BRIGADE",
+    "ALL",
+    "MT",
+    "DUNEED"
   ]);
 
   const units = [];
 
   tokens.forEach((token) => {
     if (ignore.has(token)) return;
+    if (/^\d+$/.test(token)) return;
+    if (/^\d{2}:\d{2}:\d{2}$/.test(token)) return;
+    if (/^\d{2}-\d{2}-\d{4}$/.test(token)) return;
+    if (/^F\d{6,}$/.test(token)) return;
+    if (/^[A-Z]{4}C[13]$/.test(token)) return;
+    if (/^ALARC[13]$/.test(token)) return;
+    if (/^STRUC[13]$/.test(token)) return;
+    if (/^INCI[13]$/.test(token)) return;
+    if (/^RESCC[13]$/.test(token)) return;
 
     let normalized = token;
 
@@ -885,7 +925,7 @@ function extractPagedUnits(textValue, eventNumber) {
     }
 
     const isOperationalCode =
-      /^(?:[A-Z]{4,6}|P\d+[A-Z]?|R\d+|STHB\d+|SES\d*|MTDU|CONN|GROV|BARW|TRQY|FRES|P63B|P64)$/.test(normalized);
+      /^(?:CONN|GROV|FRES|BARW|TRQY|MTDU|P63B|P64|P\d+[A-Z]?|R\d+|STHB\d+|SES\d*|[A-Z]{4,6})$/.test(normalized);
 
     if (!isOperationalCode) return;
     if (!units.includes(normalized)) units.push(normalized);
@@ -997,7 +1037,7 @@ function populateIncidentFromOcr(parsed) {
   state.incident.actualLocation = parsed.actualLocation || state.incident.actualLocation;
   state.incident.brigadesOnScene = parsed.units?.length ? parsed.units : state.incident.brigadesOnScene;
 
-  if (el("pagerDate")) el("pagerDate").value = state.incident.pagerDate;
+  if (el("pagerDate")) el("pagerDate").value = pagerDateToInputValue(state.incident.pagerDate);
   if (el("pagerTime")) el("pagerTime").value = state.incident.pagerTime;
   if (el("brigadeCode")) el("brigadeCode").value = state.incident.brigadeCode;
   if (el("brigadeRole")) el("brigadeRole").value = state.incident.brigadeRole;
@@ -1010,16 +1050,491 @@ function populateIncidentFromOcr(parsed) {
   scheduleDraftSave();
 }
 
+function addSceneBrigade() {
+  let value = el("sceneBrigadeSelect").value;
+  if (!value) return;
+
+  if (value === "Other") value = el("sceneBrigadeOther").value.trim().toUpperCase();
+  if (!value) return;
+
+  if (!state.incident.brigadesOnScene.includes(value)) {
+    state.incident.brigadesOnScene.push(value);
+  }
+
+  el("sceneBrigadeSelect").value = "";
+  el("sceneBrigadeOther").value = "";
+  el("sceneBrigadeOther").classList.add("hidden");
+
+  markReportStale();
+  renderSceneBrigades();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function renderSceneBrigades() {
+  const wrap = el("sceneBrigadeChips");
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+
+  state.incident.brigadesOnScene.forEach((code) => {
+    const chip = document.createElement("div");
+    chip.className = "scene-chip";
+    chip.innerHTML = `<span>${text(code)}</span><button type="button" aria-label="Remove ${text(code)}">×</button>`;
+    chip.querySelector("button").addEventListener("click", () => {
+      state.incident.brigadesOnScene = state.incident.brigadesOnScene.filter((x) => x !== code);
+      markReportStale();
+      renderSceneBrigades();
+      scheduleDraftSave();
+      updateReportSummary();
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+function autoAddAgencyFromSelect() {
+  const select = el("agencyType");
+  const type = select.value;
+  if (!type) return;
+
+  state.agencies.push({
+    id: uid(),
+    type,
+    otherName: "",
+    officerName: "",
+    contactNumber: "",
+    station: "",
+    badgeNumber: "",
+    comments: ""
+  });
+
+  select.value = "";
+  markReportStale();
+  renderAgencies();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function renderAgencies() {
+  const wrap = el("agencyBlocks");
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+
+  state.agencies.forEach((agency) => {
+    const block = document.createElement("div");
+    block.className = "agency-block";
+    block.innerHTML = `
+      <div class="row between">
+        <strong>${text(agency.type)}</strong>
+        <button class="tiny-btn" type="button">Remove</button>
+      </div>
+      <div class="grid">
+        ${agency.type === "Other" ? `<label>Other Agency Name<input data-field="otherName" type="text" value="${text(agency.otherName)}"></label>` : ""}
+        <label>Officer Name<input data-field="officerName" type="text" value="${text(agency.officerName)}"></label>
+        <label>Contact Number<input data-field="contactNumber" type="text" inputmode="tel" value="${text(agency.contactNumber)}"></label>
+        <label>Station<input data-field="station" type="text" value="${text(agency.station)}"></label>
+        <label>Badge Number<input data-field="badgeNumber" type="text" inputmode="numeric" value="${text(agency.badgeNumber)}"></label>
+        <label class="full">Comments<textarea data-field="comments" rows="2">${text(agency.comments)}</textarea></label>
+      </div>
+    `;
+
+    block.querySelector("button").addEventListener("click", () => {
+      const confirmed = window.confirm(`Remove agency entry for ${agency.type}?`);
+      if (!confirmed) return;
+      state.agencies = state.agencies.filter((a) => a.id !== agency.id);
+      markReportStale();
+      renderAgencies();
+      scheduleDraftSave();
+      updateReportSummary();
+    });
+
+    block.querySelectorAll("[data-field]").forEach((field) => {
+      field.addEventListener("input", (e) => {
+        agency[e.target.dataset.field] = e.target.value;
+        markReportStale();
+        scheduleDraftSave();
+        updateReportSummary();
+      });
+    });
+
+    wrap.appendChild(block);
+  });
+}
+
+function toggleFlag(key, buttonId) {
+  state.incident.flags[key] = !state.incident.flags[key];
+  el(buttonId).classList.toggle("active", state.incident.flags[key]);
+  markReportStale();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function hasResponderInjury() {
+  return getAllResponders().some((r) => r.injured);
+}
+
+function isInjuriesFlagActive() {
+  return state.incident.flags.injuriesManual || hasResponderInjury();
+}
+
+function toggleManualInjuriesFlag() {
+  state.incident.flags.injuriesManual = !state.incident.flags.injuriesManual;
+  syncInjuriesFlagButton();
+  markReportStale();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function syncInjuriesFlagButton() {
+  el("flagInjuriesBtn")?.classList.toggle("active", isInjuriesFlagActive());
+}
+
+function toggleSignal(code) {
+  const list = state.incident.signals;
+  if (list.includes(code)) {
+    state.incident.signals = list.filter((x) => x !== code);
+  } else {
+    state.incident.signals.push(code);
+  }
+
+  syncSignalButtons();
+  markReportStale();
+  scheduleDraftSave();
+  updateReportSummary();
+}
+
+function syncSignalButtons() {
+  document.querySelectorAll(".signal-btn").forEach((btn) => {
+    btn.classList.toggle("active", state.incident.signals.includes(btn.dataset.signalCode));
+  });
+}
+
+function resolveResponderMemberDetails(groupKey, person) {
+  const enteredName = String(person.name || "").trim().toUpperCase();
+
+  if (!enteredName) {
+    person.brigade = groupKey === "connewarre" ? "CONN" : "";
+    person.phone = "";
+    return;
+  }
+
+  if (groupKey === "connewarre") {
+    person.brigade = "CONN";
+    const found = state.memberLists.CONN.find((m) => {
+      const name = (typeof m === "string" ? m : m.name || "").trim().toUpperCase();
+      return name === enteredName;
+    });
+    person.phone = found && typeof found !== "string" ? found.phone || "" : "";
+    return;
+  }
+
+  const found = findMemberAcrossBrigades(person.name);
+  person.brigade = found?.brigade || "";
+  person.phone = found?.phone || "";
+}
+
+function updateResponderCardDisplay(card, person, groupKey) {
+  const badge = card.querySelector(".badge");
+  if (badge) {
+    badge.textContent = person.brigade || (groupKey === "connewarre" ? "CONN" : "");
+  }
+
+  card.querySelectorAll(".responder-destinations .chip-btn").forEach((btn) => {
+    btn.disabled = !person.name.trim();
+  });
+
+  card.querySelectorAll(".responder-flags .chip-btn").forEach((btn) => {
+    btn.disabled = !person.name.trim();
+  });
+}
+
+function updateOicBanner() {
+  const oic = getAllResponders().find((r) => r.oic && r.name.trim());
+
+  if (!oic) {
+    el("oicBanner").textContent = "APPOINT OIC";
+    el("oicBanner").classList.add("missing");
+    return;
+  }
+
+  el("oicBanner").textContent = `OIC: ${oic.name}${oic.phone ? " – " + oic.phone : ""}`;
+  el("oicBanner").classList.remove("missing");
+}
+
+function renderResponders() {
+  renderResponderGroup("connewarre", "connewarreList", ["T1", "T2", "Station", "Direct"]);
+  renderResponderGroup("mtd", "mtdList", ["MTD P/T", "Station", "Direct"]);
+  updateOicBanner();
+  syncInjuriesFlagButton();
+  updateReportSummary();
+}
+
+function renderResponderGroup(groupKey, containerId, destinations) {
+  const wrap = el(containerId);
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+
+  state.responders[groupKey].forEach((person, index) => {
+    const card = document.createElement("div");
+    card.className = "responder-card";
+    card.dataset.id = person.id;
+    card.dataset.group = groupKey;
+
+    const listId = `list_${groupKey}_${person.id}`;
+    const options = groupKey === "connewarre"
+      ? state.memberLists.CONN
+      : [...state.memberLists.CONN, ...state.memberLists.GROV, ...state.memberLists.FRES];
+
+    const optionHtml = options.map((m) => {
+      const name = typeof m === "string" ? m : m.name;
+      return `<option value="${text(name)}"></option>`;
+    }).join("");
+
+    const showTruckRole = person.destination === "T1" || person.destination === "T2" || person.destination === "MTD P/T";
+
+    card.innerHTML = `
+      <div class="responder-card-top">
+        <div>
+          <input type="text" list="${listId}" value="${text(person.name)}" placeholder="Name" autocomplete="off" />
+          <datalist id="${listId}">${optionHtml}</datalist>
+        </div>
+        <div class="badge">${text(person.brigade || (groupKey === "connewarre" ? "CONN" : ""))}</div>
+        <button class="tiny-btn" type="button">Remove</button>
+      </div>
+
+      <div class="responder-stage">
+        <div class="stage-label">Response</div>
+        <div class="chips responder-destinations"></div>
+      </div>
+
+      ${showTruckRole ? `
+        <div class="responder-stage">
+          <div class="stage-label">Truck role</div>
+          <div class="chips responder-roles"></div>
+        </div>
+      ` : ""}
+
+      <div class="responder-stage">
+        <div class="stage-label">Flags</div>
+        <div class="chips responder-flags"></div>
+      </div>
+    `;
+
+    const nameInput = card.querySelector("input");
+    nameInput.addEventListener("input", (e) => {
+      person.name = e.target.value;
+      resolveResponderMemberDetails(groupKey, person);
+
+      if (groupKey === "mtd" && !person.destination) {
+        person.destination = "MTD P/T";
+      }
+
+      updateResponderCardDisplay(card, person, groupKey);
+      updateOicBanner();
+      updateReportSummary();
+      markReportStale();
+      scheduleDraftSave();
+    });
+
+    card.querySelector(".tiny-btn").addEventListener("click", () => {
+      const confirmed = window.confirm(`Remove responder "${person.name || "Unnamed member"}"?`);
+      if (!confirmed) return;
+
+      state.responders[groupKey] = state.responders[groupKey].filter((x) => x.id !== person.id);
+      if (!state.responders[groupKey].length) state.responders[groupKey].push(createResponder(groupKey));
+      markReportStale();
+      renderResponders();
+      scheduleDraftSave();
+    });
+
+    const destWrap = card.querySelector(".responder-destinations");
+    destinations.forEach((dest) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `chip-btn ${person.destination === dest ? "active" : ""}`;
+      btn.textContent = dest;
+      btn.disabled = !person.name.trim();
+
+      btn.addEventListener("click", () => {
+        person.destination = dest;
+
+        if (!(dest === "T1" || dest === "T2" || dest === "MTD P/T")) {
+          person.isDriver = false;
+          person.isCrewLeader = false;
+        }
+
+        markReportStale();
+        renderResponders();
+        scheduleDraftSave();
+      });
+
+      destWrap.appendChild(btn);
+    });
+
+    if (showTruckRole) {
+      const roleWrap = card.querySelector(".responder-roles");
+
+      const driverBtn = document.createElement("button");
+      driverBtn.type = "button";
+      driverBtn.className = `chip-btn ${person.isDriver ? "active" : ""}`;
+      driverBtn.textContent = "Driver";
+      driverBtn.addEventListener("click", () => {
+        if (!person.isDriver && isRoleTaken(person.destination, "driver", person.id)) {
+          window.alert("A driver has already been appointed for that appliance.");
+          return;
+        }
+
+        person.isDriver = !person.isDriver;
+        markReportStale();
+        renderResponders();
+        scheduleDraftSave();
+      });
+      roleWrap.appendChild(driverBtn);
+
+      const clBtn = document.createElement("button");
+      clBtn.type = "button";
+      clBtn.className = `chip-btn ${person.isCrewLeader ? "active" : ""}`;
+      clBtn.textContent = "CL";
+      clBtn.addEventListener("click", () => {
+        if (!person.isCrewLeader && isRoleTaken(person.destination, "crewLeader", person.id)) {
+          window.alert("A crew leader has already been appointed for that appliance.");
+          return;
+        }
+
+        person.isCrewLeader = !person.isCrewLeader;
+        markReportStale();
+        renderResponders();
+        scheduleDraftSave();
+      });
+      roleWrap.appendChild(clBtn);
+    }
+
+    const flagsWrap = card.querySelector(".responder-flags");
+    [
+      ["BA", "ba"],
+      ["Injured", "injured"],
+      ["OIC", "oic"]
+    ].forEach(([label, key]) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `chip-btn ${person[key] ? "active" : ""}`;
+      btn.textContent = label;
+      btn.disabled = !person.name.trim();
+
+      btn.addEventListener("click", () => {
+        if (!person.name.trim()) return;
+
+        if (key === "oic") {
+          const currentOic = getAllResponders().find((r) => r.oic && r.id !== person.id && r.name.trim());
+
+          if (!person.oic && currentOic) {
+            const confirmed = window.confirm(`OIC is currently ${currentOic.name}. Replace with ${person.name}?`);
+            if (!confirmed) return;
+          }
+
+          const willBeOic = !person.oic;
+          clearAllOic();
+          person.oic = willBeOic;
+          markReportStale();
+          renderResponders();
+          scheduleDraftSave();
+          return;
+        }
+
+        person[key] = !person[key];
+        if (key === "injured") syncInjuriesFlagButton();
+        btn.classList.toggle("active", person[key]);
+        updateOicBanner();
+        updateReportSummary();
+        markReportStale();
+        scheduleDraftSave();
+      });
+
+      flagsWrap.appendChild(btn);
+    });
+
+    wrap.appendChild(card);
+    updateResponderCardDisplay(card, person, groupKey);
+
+    const list = state.responders[groupKey];
+    const isLast = index === list.length - 1;
+    if (isLast && person.name.trim() && person.destination) {
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.className = "secondary-btn";
+      addBtn.textContent = "Add Member";
+      addBtn.addEventListener("click", () => {
+        state.responders[groupKey].push(createResponder(groupKey));
+        markReportStale();
+        renderResponders();
+        scheduleDraftSave();
+      });
+      wrap.appendChild(addBtn);
+    }
+  });
+}
+
+function findMemberAcrossBrigades(name) {
+  const target = String(name || "").trim().toUpperCase();
+  for (const key of ["CONN", "GROV", "FRES"]) {
+    const found = state.memberLists[key].find((m) => {
+      const n = (typeof m === "string" ? m : m.name).toUpperCase();
+      return n === target;
+    });
+    if (found) {
+      return {
+        brigade: key,
+        phone: typeof found === "string" ? "" : found.phone || ""
+      };
+    }
+  }
+  return null;
+}
+
+function isRoleTaken(destination, roleKey, currentId) {
+  return getAllResponders().some((r) => {
+    if (r.id === currentId) return false;
+    if (r.destination !== destination) return false;
+    if (roleKey === "driver") return Boolean(r.isDriver);
+    if (roleKey === "crewLeader") return Boolean(r.isCrewLeader);
+    return false;
+  });
+}
+
+function clearAllOic() {
+  getAllResponders().forEach((r) => {
+    r.oic = false;
+  });
+}
+
+function formatResponderName(r) {
+  if (!r.name.trim()) return "";
+  if (r.brigade === "CONN" || !r.brigade) return r.name.trim();
+  return `${r.name.trim()} (${r.brigade})`;
+}
+
+function formatResponderFlags(r) {
+  const parts = [];
+  if (r.isDriver) parts.push("Driver");
+  if (r.isCrewLeader) parts.push("CL");
+  if (r.oic) parts.push("OIC");
+  if (r.ba) parts.push("BA");
+  return parts.join(" ");
+}
+
 function setApplianceCode(applianceKey, value) {
   state.responders.applianceCodes[applianceKey] = value;
   syncApplianceCodeButtons();
+  renderResponders();
   markReportStale();
   scheduleDraftSave();
   updateReportSummary();
 }
 
 function syncApplianceCodeButtons() {
-  const mapping = [
+  const configs = [
     ["t1", "t1CodeC1Btn", "C1"],
     ["t1", "t1CodeC3Btn", "C3"],
     ["t2", "t2CodeC1Btn", "C1"],
@@ -1028,417 +1543,37 @@ function syncApplianceCodeButtons() {
     ["mtd", "mtdCodeC3Btn", "C3"]
   ];
 
-  mapping.forEach(([key, buttonId, code]) => {
-    const btn = el(buttonId);
-    if (!btn) return;
-    btn.classList.toggle("active", state.responders.applianceCodes[key] === code);
+  configs.forEach(([key, id, code]) => {
+    const button = el(id);
+    if (!button) return;
+    if (state.responders.applianceCodes[key] === code) {
+      button.classList.add("active");
+    } else {
+      button.classList.remove("active");
+    }
   });
 
-  ["t1CodeClearBtn", "t2CodeClearBtn", "mtdCodeClearBtn"].forEach((id) => {
-    const btn = el(id);
-    if (!btn) return;
-    const key = id.startsWith("t1") ? "t1" : id.startsWith("t2") ? "t2" : "mtd";
-    btn.classList.toggle("active", !state.responders.applianceCodes[key]);
-  });
-}
-
-function openSettings() {
-  el("profileName").value = state.profile.name;
-  el("profileMemberNumber").value = state.profile.memberNumber;
-  el("profileContactNumber").value = state.profile.contactNumber;
-  el("profileEmail").value = state.profile.email;
-  el("profileBrigade").value = state.profile.brigade;
-  el("settingsModal").classList.remove("hidden");
-}
-
-function closeSettings() {
-  el("settingsModal").classList.add("hidden");
-}
-
-function saveProfileFromUi() {
-  state.profile.name = el("profileName").value.trim();
-  state.profile.memberNumber = el("profileMemberNumber").value.trim();
-  state.profile.contactNumber = el("profileContactNumber").value.trim();
-  state.profile.email = el("profileEmail").value.trim();
-  state.profile.brigade = el("profileBrigade").value.trim() || "Connewarre";
-  saveProfile();
-  updateReportSummary();
-  closeSettings();
-}
-
-function sendEmail() {
-  const subject = buildReportTitle();
-  const body = buildReport();
-  window.location.href = `mailto:${encodeURIComponent(state.profile.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
-async function sendSms() {
-  const body = buildReport();
-  try {
-    await navigator.clipboard.writeText(body);
-    updateDraftMeta("Report copied to clipboard for SMS.");
-  } catch {}
-  window.location.href = `sms:?body=${encodeURIComponent(body)}`;
-}
-
-function showPage(pageId) {
-  state.ui.currentPage = pageId;
-  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("active", p.id === pageId));
-  document.querySelectorAll(".tab-btn[data-page]").forEach((b) => b.classList.toggle("active", b.dataset.page === pageId));
-
-  if (pageId === "sendPage") {
-    el("reportPreview").value = buildReport();
-    renderValidationIssues(getValidationIssues());
-    updateReportSummary();
-  }
-
-  scheduleDraftSave();
-}
-
-function renderIncidentFields() {
-  el("eventNumber").value = state.incident.eventNumber || "F";
-  el("pagerDate").value = state.incident.pagerDate;
-  el("pagerTime").value = state.incident.pagerTime;
-  el("brigadeCode").value = state.incident.brigadeCode;
-  el("brigadeRole").value = state.incident.brigadeRole;
-  el("incidentType").value = state.incident.incidentType;
-  el("pagerDetails").value = state.incident.pagerDetails;
-  el("actualLocation").value = state.incident.actualLocation;
-  el("controlName").value = state.incident.controlName;
-  el("firsCode").value = state.incident.firsCode;
-  el("comments").value = state.incident.comments;
-  el("injuryNotes").value = state.incident.injuryNotes;
-  el("firstAgency").value = state.incident.firstAgency;
-  el("firstAgencyOther").value = state.incident.firstAgencyOther;
-  el("firstAgencyOther").classList.toggle("hidden", state.incident.firstAgency !== "Other");
-
-  el("weather1").value = state.incident.weather1;
-  el("weather2").value = state.incident.weather2;
-  syncWeather2Visibility();
-  syncWeather2Options();
-
-  el("distanceToScene").value = state.incident.distanceToScene;
-  el("hose64Qty").value = state.incident.hoses.hose64Qty;
-  el("hose38Qty").value = state.incident.hoses.hose38Qty;
-  el("hose25Qty").value = state.incident.hoses.hose25Qty;
-  el("hoseOtherType").value = state.incident.hoses.hoseOtherType;
-
-  el("flagMembersBeforeBtn").classList.toggle("active", state.incident.flags.membersBefore);
-  el("flagAarBtn").classList.toggle("active", state.incident.flags.aar);
-  el("flagHotDebriefBtn")?.classList.toggle("active", state.incident.flags.hotDebrief);
-  syncInjuriesFlagButton();
-  syncSignalButtons();
-  syncApplianceCodeButtons();
-
-  renderHosesPanel();
-
-  if (state.ui.previewUrl) {
-    el("pagerPreview").src = state.ui.previewUrl;
-    el("pagerPreview").classList.remove("hidden");
-    el("pagerPreviewEmpty").classList.add("hidden");
-  } else {
-    el("pagerPreview").src = "";
-    el("pagerPreview").classList.add("hidden");
-    el("pagerPreviewEmpty").classList.remove("hidden");
-  }
-}
-
-function renderEverything() {
-  renderIncidentFields();
-  renderSceneBrigades();
-  renderAgencies();
-  renderResponders();
-  renderSavedReports();
-  updateConnectionBanner();
-  updateReportSummary();
-  renderValidationIssues(getValidationIssues());
-  updateReportActionState();
-  showPage(state.ui.currentPage);
-  renderDraftRestoreBanner();
-}
-
-function updateReportSummary() {
-  const wrap = el("reportSummary");
-  if (!wrap) return;
-
-  const all = getAllResponders();
-  const oic = all.find((r) => r.oic && r.name.trim());
-  const applianceCount = ["T1", "T2", "MTD P/T"].filter((code) => all.some((r) => r.destination === code && r.name.trim())).length;
-  const directCount = all.filter((r) => r.destination === "Direct" && r.name.trim()).length;
-  const stationCount = all.filter((r) => r.destination === "Station" && r.name.trim()).length;
-  const flagsCount = [
-    state.incident.flags.membersBefore,
-    state.incident.flags.aar,
-    state.incident.flags.hotDebrief,
-    isInjuriesFlagActive(),
-    state.incident.signals.length > 0
-  ].filter(Boolean).length;
-
-  const items = [
-    ["Event", state.incident.eventNumber || "Not set"],
-    ["Type", state.incident.incidentType || "Not set"],
-    ["OIC", oic?.name || "Not set"],
-    ["Responders", all.filter((r) => r.name.trim()).length],
-    ["Appliances", applianceCount],
-    ["Direct", directCount],
-    ["Station", stationCount],
-    ["Agencies", state.agencies.length],
-    ["Flags", flagsCount]
+  const clearConfigs = [
+    ["t1", "t1CodeClearBtn"],
+    ["t2", "t2CodeClearBtn"],
+    ["mtd", "mtdCodeClearBtn"]
   ];
 
-  wrap.innerHTML = items
-    .map(([label, value]) => `<div class="summary-item">${text(label)}: ${text(value)}` + `</div>`)
-    .join("");
-}
-
-function buildReportTitle() {
-  return `${state.incident.eventNumber || "NO_EVENT"} – ${state.incident.incidentType || "UNKNOWN"} – ${state.incident.actualLocation || "NO LOCATION"}`;
-}
-
-function getDraftPayload() {
-  return {
-    incident: clone(state.incident),
-    responders: clone(state.responders),
-    agencies: clone(state.agencies),
-    ui: {
-      currentPage: state.ui.currentPage,
-      previewUrl: state.ui.previewUrl,
-      hosesOpen: state.ui.hosesOpen
-    },
-    savedAt: new Date().toISOString()
-  };
-}
-
-function isMeaningfulDraft(payload) {
-  if (!payload) return false;
-
-  const { incident, responders, agencies, ui } = payload;
-  return Boolean(
-    incident?.eventNumber ||
-    incident?.pagerDate ||
-    incident?.pagerTime ||
-    incident?.brigadeCode ||
-    incident?.incidentType ||
-    incident?.actualLocation ||
-    incident?.comments ||
-    incident?.brigadesOnScene?.length ||
-    agencies?.length ||
-    responders?.connewarre?.some((r) => r.name?.trim()) ||
-    responders?.mtd?.some((r) => r.name?.trim()) ||
-    ui?.previewUrl
-  );
-}
-
-function saveDraft() {
-  const payload = getDraftPayload();
-  localStorage.setItem(STORAGE_KEYS.DRAFT, JSON.stringify(payload));
-  state.ui.lastDraftSavedAt = payload.savedAt;
-  updateDraftMeta(
-    `Draft autosaved ${new Date(payload.savedAt).toLocaleTimeString("en-AU", {
-      hour: "2-digit",
-      minute: "2-digit"
-    })}.`
-  );
-}
-
-function scheduleDraftSave() {
-  clearTimeout(draftSaveTimer);
-  draftSaveTimer = setTimeout(saveDraft, CONFIG.DRAFT_SAVE_DELAY_MS);
-}
-
-function forceDraftSave() {
-  clearTimeout(draftSaveTimer);
-  saveDraft();
-  const stamp = new Date().toLocaleTimeString("en-AU", {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-  updateDraftMeta(`Draft saved manually at ${stamp}.`);
-}
-
-function restoreDraftIfPresent() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.DRAFT);
-    if (!raw) return;
-
-    const payload = JSON.parse(raw);
-    if (!isMeaningfulDraft(payload)) return;
-
-    state.incident = { ...DEFAULT_INCIDENT(), ...payload.incident };
-    state.responders = {
-      connewarre: Array.isArray(payload.responders?.connewarre) ? payload.responders.connewarre : [],
-      mtd: Array.isArray(payload.responders?.mtd) ? payload.responders.mtd : [],
-      applianceCodes: {
-        t1: payload.responders?.applianceCodes?.t1 || "",
-        t2: payload.responders?.applianceCodes?.t2 || "",
-        mtd: payload.responders?.applianceCodes?.mtd || ""
-      }
-    };
-    state.agencies = Array.isArray(payload.agencies) ? payload.agencies : [];
-    state.ui.currentPage = "incidentPage";
-    state.ui.previewUrl = payload.ui?.previewUrl || "";
-    state.ui.hosesOpen = Boolean(payload.ui?.hosesOpen);
-    state.ui.restoredDraft = true;
-    state.ui.lastDraftSavedAt = payload.savedAt || "";
-  } catch {}
-}
-
-function renderDraftRestoreBanner() {
-  const banner = el("draftRestoreBanner");
-  const textEl = el("draftRestoreText");
-  if (!banner || !textEl) return;
-
-  if (!state.ui.restoredDraft) {
-    banner.classList.add("hidden");
-    return;
-  }
-
-  const stamp = state.ui.lastDraftSavedAt
-    ? new Date(state.ui.lastDraftSavedAt).toLocaleString("en-AU")
-    : "this device";
-
-  textEl.textContent = `Draft restored from ${stamp}.`;
-  banner.classList.remove("hidden");
-}
-
-function clearDraft() {
-  const confirmed = window.confirm("Clear the current local draft from this device?");
-  if (!confirmed) return;
-
-  localStorage.removeItem(STORAGE_KEYS.DRAFT);
-  state.ui.restoredDraft = false;
-  state.ui.lastDraftSavedAt = "";
-  el("draftRestoreBanner")?.classList.add("hidden");
-  updateDraftMeta("Local draft cleared.");
-}
-
-function updateDraftMeta(message) {
-  const target = el("draftMeta");
-  if (target) target.textContent = message;
-}
-
-function getValidationIssues() {
-  const issues = [];
-  const all = getAllResponders();
-  const hasResponder = all.some((r) => r.name.trim());
-  const hasOic = all.some((r) => r.oic && r.name.trim());
-  const needsOic = state.incident.brigadeCode.trim().toUpperCase().startsWith("CONN");
-
-  if (!state.incident.eventNumber.trim() || state.incident.eventNumber.trim() === "F") issues.push("Event Number");
-  if (!buildPagerDateTime().trim()) issues.push("Pager Date / Time");
-  if (!state.incident.actualLocation.trim()) issues.push("Actual Location");
-  if (!hasResponder) issues.push("Responder");
-  if (needsOic && !hasOic) issues.push("OIC");
-
-  return issues;
-}
-
-function renderValidationIssues(issues) {
-  const wrap = el("validationChips");
-  if (!wrap) return;
-  wrap.innerHTML = issues.map((item) => `<div class="validation-chip">${text(item)} missing</div>`).join("");
-}
-
-function isQuietHours() {
-  const hour = new Date().getHours();
-  return hour >= CONFIG.QUIET_HOURS_START || hour < CONFIG.QUIET_HOURS_END;
-}
-
-function generateReportFlow() {
-  const issues = getValidationIssues();
-  renderValidationIssues(issues);
-
-  if (issues.length) {
-    el("validationText").textContent = "Complete the missing fields below before generating the report.";
-    state.ui.reportGenerated = false;
-    updateReportActionState();
-    return;
-  }
-
-  if (isQuietHours()) {
-    el("validationText").textContent = "Report generated. It’s a bit late to send paperwork. Consider saving and sending during normal hours unless urgent.";
-  } else {
-    el("validationText").textContent = "Report generated.";
-  }
-
-  const report = buildReport();
-  el("reportPreview").value = report;
-  saveCurrentReport({ dedupe: true, silent: true });
-  state.ui.reportGenerated = true;
-  updateReportActionState();
-  updateReportSummary();
-}
-
-function saveCurrentReport(options = {}) {
-  const { dedupe = false, silent = false } = options;
-  const title = buildReportTitle();
-  const body = buildReport();
-
-  if (dedupe) {
-    const existing = state.savedReports.find((r) => r.title === title && r.body === body);
-    if (existing) {
-      if (!silent) updateDraftMeta("Matching report already saved locally.");
-      return;
+  clearConfigs.forEach(([key, id]) => {
+    const button = el(id);
+    if (!button) return;
+    if (!state.responders.applianceCodes[key]) {
+      button.classList.add("active");
+    } else {
+      button.classList.remove("active");
     }
-  }
-
-  state.savedReports.unshift({
-    id: uid(),
-    title,
-    body,
-    createdAt: new Date().toISOString()
   });
-
-  state.savedReports = state.savedReports.slice(0, CONFIG.MAX_REPORTS);
-  saveSavedReports();
-  renderSavedReports();
-
-  if (!silent) updateDraftMeta("Report saved locally.");
 }
 
-function renderSavedReports() {
-  const wrap = el("savedReports");
-  if (!wrap) return;
-
-  wrap.innerHTML = "";
-
-  if (!state.savedReports.length) {
-    wrap.innerHTML = `<div class="saved-item">No saved reports yet.</div>`;
-    return;
-  }
-
-  state.savedReports.forEach((r) => {
-    const item = document.createElement("div");
-    item.className = "saved-item";
-    item.innerHTML = `
-      <strong>${text(r.title)}</strong>
-      <div class="help-text">${new Date(r.createdAt).toLocaleString("en-AU")}</div>
-      <div class="saved-actions">
-        <button class="tiny-btn" type="button">Load Preview</button>
-        <button class="tiny-btn" type="button">Delete</button>
-      </div>
-    `;
-
-    const [loadBtn, delBtn] = item.querySelectorAll("button");
-
-    loadBtn.addEventListener("click", () => {
-      el("reportPreview").value = r.body;
-      showPage("sendPage");
-      el("validationText").textContent = "Saved report loaded for review.";
-      state.ui.reportGenerated = true;
-      updateReportActionState();
-    });
-
-    delBtn.addEventListener("click", () => {
-      const confirmed = window.confirm(`Delete saved report "${r.title}"?`);
-      if (!confirmed) return;
-      state.savedReports = state.savedReports.filter((x) => x.id !== r.id);
-      saveSavedReports();
-      renderSavedReports();
-    });
-
-    wrap.appendChild(item);
-  });
+function buildPagerDateTime() {
+  const date = state.incident.pagerDate || "";
+  const time = state.incident.pagerTime || "";
+  return [date, time].filter(Boolean).join(" ");
 }
 
 function buildApplianceCodeLine() {
@@ -1598,6 +1733,409 @@ function buildReport() {
   pushLine(lines, "Contact Number", state.profile.contactNumber);
 
   return lines.join("\n");
+}
+
+function pushLine(lines, label, value) {
+  if (String(value || "").trim()) lines.push(`${label}: ${value}`);
+}
+
+function getValidationIssues() {
+  const issues = [];
+  const all = getAllResponders();
+  const hasResponder = all.some((r) => r.name.trim());
+  const hasOic = all.some((r) => r.oic && r.name.trim());
+  const needsOic = state.incident.brigadeCode.trim().toUpperCase().startsWith("CONN");
+
+  if (!state.incident.eventNumber.trim() || state.incident.eventNumber.trim() === "F") issues.push("Event Number");
+  if (!buildPagerDateTime().trim()) issues.push("Pager Date / Time");
+  if (!state.incident.actualLocation.trim()) issues.push("Actual Location");
+  if (!hasResponder) issues.push("Responder");
+  if (needsOic && !hasOic) issues.push("OIC");
+
+  return issues;
+}
+
+function renderValidationIssues(issues) {
+  const wrap = el("validationChips");
+  if (!wrap) return;
+  wrap.innerHTML = issues.map((item) => `<div class="validation-chip">${text(item)} missing</div>`).join("");
+}
+
+function isQuietHours() {
+  const hour = new Date().getHours();
+  return hour >= CONFIG.QUIET_HOURS_START || hour < CONFIG.QUIET_HOURS_END;
+}
+
+function generateReportFlow() {
+  const issues = getValidationIssues();
+  renderValidationIssues(issues);
+
+  if (issues.length) {
+    el("validationText").textContent = "Complete the missing fields below before generating the report.";
+    state.ui.reportGenerated = false;
+    updateReportActionState();
+    return;
+  }
+
+  if (isQuietHours()) {
+    el("validationText").textContent = "Report generated. It’s a bit late to send paperwork. Consider saving and sending during normal hours unless urgent.";
+  } else {
+    el("validationText").textContent = "Report generated.";
+  }
+
+  const report = buildReport();
+  el("reportPreview").value = report;
+  saveCurrentReport({ dedupe: true, silent: true });
+  state.ui.reportGenerated = true;
+  updateReportActionState();
+  updateReportSummary();
+}
+
+function buildReportTitle() {
+  return `${state.incident.eventNumber || "NO_EVENT"} – ${state.incident.incidentType || "UNKNOWN"} – ${state.incident.actualLocation || "NO LOCATION"}`;
+}
+
+function saveCurrentReport(options = {}) {
+  const { dedupe = false, silent = false } = options;
+  const title = buildReportTitle();
+  const body = buildReport();
+
+  if (dedupe) {
+    const existing = state.savedReports.find((r) => r.title === title && r.body === body);
+    if (existing) {
+      if (!silent) updateDraftMeta("Matching report already saved locally.");
+      return;
+    }
+  }
+
+  state.savedReports.unshift({
+    id: uid(),
+    title,
+    body,
+    createdAt: new Date().toISOString()
+  });
+
+  state.savedReports = state.savedReports.slice(0, CONFIG.MAX_REPORTS);
+  saveSavedReports();
+  renderSavedReports();
+
+  if (!silent) updateDraftMeta("Report saved locally.");
+}
+
+function renderSavedReports() {
+  const wrap = el("savedReports");
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+
+  if (!state.savedReports.length) {
+    wrap.innerHTML = `<div class="saved-item">No saved reports yet.</div>`;
+    return;
+  }
+
+  state.savedReports.forEach((r) => {
+    const item = document.createElement("div");
+    item.className = "saved-item";
+    item.innerHTML = `
+      <strong>${text(r.title)}</strong>
+      <div class="help-text">${new Date(r.createdAt).toLocaleString("en-AU")}</div>
+      <div class="saved-actions">
+        <button class="tiny-btn" type="button">Load Preview</button>
+        <button class="tiny-btn" type="button">Delete</button>
+      </div>
+    `;
+
+    const [loadBtn, delBtn] = item.querySelectorAll("button");
+
+    loadBtn.addEventListener("click", () => {
+      el("reportPreview").value = r.body;
+      showPage("sendPage");
+      el("validationText").textContent = "Saved report loaded for review.";
+      state.ui.reportGenerated = true;
+      updateReportActionState();
+    });
+
+    delBtn.addEventListener("click", () => {
+      const confirmed = window.confirm(`Delete saved report "${r.title}"?`);
+      if (!confirmed) return;
+      state.savedReports = state.savedReports.filter((x) => x.id !== r.id);
+      saveSavedReports();
+      renderSavedReports();
+    });
+
+    wrap.appendChild(item);
+  });
+}
+
+function openSettings() {
+  el("profileName").value = state.profile.name;
+  el("profileMemberNumber").value = state.profile.memberNumber;
+  el("profileContactNumber").value = state.profile.contactNumber;
+  el("profileEmail").value = state.profile.email;
+  el("profileBrigade").value = state.profile.brigade;
+  el("settingsModal").classList.remove("hidden");
+}
+
+function closeSettings() {
+  el("settingsModal").classList.add("hidden");
+}
+
+function saveProfileFromUi() {
+  state.profile.name = el("profileName").value.trim();
+  state.profile.memberNumber = el("profileMemberNumber").value.trim();
+  state.profile.contactNumber = el("profileContactNumber").value.trim();
+  state.profile.email = el("profileEmail").value.trim();
+  state.profile.brigade = el("profileBrigade").value.trim() || "Connewarre";
+  saveProfile();
+  updateReportSummary();
+  closeSettings();
+}
+
+function sendEmail() {
+  const subject = buildReportTitle();
+  const body = buildReport();
+  window.location.href = `mailto:${encodeURIComponent(state.profile.email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+async function sendSms() {
+  const body = buildReport();
+  try {
+    await navigator.clipboard.writeText(body);
+    updateDraftMeta("Report copied to clipboard for SMS.");
+  } catch {}
+  window.location.href = `sms:?body=${encodeURIComponent(body)}`;
+}
+
+function showPage(pageId) {
+  state.ui.currentPage = pageId;
+  document.querySelectorAll(".page").forEach((p) => p.classList.toggle("active", p.id === pageId));
+  document.querySelectorAll(".tab-btn[data-page]").forEach((b) => b.classList.toggle("active", b.dataset.page === pageId));
+
+  if (pageId === "sendPage") {
+    el("reportPreview").value = buildReport();
+    renderValidationIssues(getValidationIssues());
+    updateReportSummary();
+  }
+
+  scheduleDraftSave();
+}
+
+function renderIncidentFields() {
+  el("eventNumber").value = state.incident.eventNumber || "F";
+  el("pagerDate").value = pagerDateToInputValue(state.incident.pagerDate);
+  el("pagerTime").value = state.incident.pagerTime;
+  el("brigadeCode").value = state.incident.brigadeCode;
+  el("brigadeRole").value = state.incident.brigadeRole;
+  el("incidentType").value = state.incident.incidentType;
+  el("pagerDetails").value = state.incident.pagerDetails;
+  el("actualLocation").value = state.incident.actualLocation;
+  el("controlName").value = state.incident.controlName;
+  el("firsCode").value = state.incident.firsCode;
+  el("comments").value = state.incident.comments;
+  el("injuryNotes").value = state.incident.injuryNotes;
+  el("firstAgency").value = state.incident.firstAgency;
+  el("firstAgencyOther").value = state.incident.firstAgencyOther;
+  el("firstAgencyOther").classList.toggle("hidden", state.incident.firstAgency !== "Other");
+
+  el("weather1").value = state.incident.weather1;
+  el("weather2").value = state.incident.weather2;
+  syncWeather2Visibility();
+  syncWeather2Options();
+
+  el("distanceToScene").value = state.incident.distanceToScene;
+  el("hose64Qty").value = state.incident.hoses.hose64Qty;
+  el("hose38Qty").value = state.incident.hoses.hose38Qty;
+  el("hose25Qty").value = state.incident.hoses.hose25Qty;
+  el("hoseOtherType").value = state.incident.hoses.hoseOtherType;
+
+  el("flagMembersBeforeBtn").classList.toggle("active", state.incident.flags.membersBefore);
+  el("flagAarBtn").classList.toggle("active", state.incident.flags.aar);
+  el("flagHotDebriefBtn")?.classList.toggle("active", state.incident.flags.hotDebrief);
+  syncInjuriesFlagButton();
+  syncSignalButtons();
+  syncApplianceCodeButtons();
+
+  renderHosesPanel();
+
+  if (state.ui.previewUrl) {
+    el("pagerPreview").src = state.ui.previewUrl;
+    el("pagerPreview").classList.remove("hidden");
+    el("pagerPreviewEmpty").classList.add("hidden");
+  } else {
+    el("pagerPreview").src = "";
+    el("pagerPreview").classList.add("hidden");
+    el("pagerPreviewEmpty").classList.remove("hidden");
+  }
+}
+
+function renderEverything() {
+  renderIncidentFields();
+  renderSceneBrigades();
+  renderAgencies();
+  renderResponders();
+  renderSavedReports();
+  updateConnectionBanner();
+  updateReportSummary();
+  renderValidationIssues(getValidationIssues());
+  updateReportActionState();
+  showPage(state.ui.currentPage);
+  renderDraftRestoreBanner();
+}
+
+function updateReportSummary() {
+  const wrap = el("reportSummary");
+  if (!wrap) return;
+
+  const all = getAllResponders();
+  const oic = all.find((r) => r.oic && r.name.trim());
+  const applianceCount = ["T1", "T2", "MTD P/T"].filter((code) => all.some((r) => r.destination === code && r.name.trim())).length;
+  const directCount = all.filter((r) => r.destination === "Direct" && r.name.trim()).length;
+  const stationCount = all.filter((r) => r.destination === "Station" && r.name.trim()).length;
+  const flagsCount = [
+    state.incident.flags.membersBefore,
+    state.incident.flags.aar,
+    state.incident.flags.hotDebrief,
+    isInjuriesFlagActive(),
+    state.incident.signals.length > 0
+  ].filter(Boolean).length;
+
+  const items = [
+    ["Event", state.incident.eventNumber || "Not set"],
+    ["Type", state.incident.incidentType || "Not set"],
+    ["OIC", oic?.name || "Not set"],
+    ["Responders", all.filter((r) => r.name.trim()).length],
+    ["Appliances", applianceCount],
+    ["Direct", directCount],
+    ["Station", stationCount],
+    ["Agencies", state.agencies.length],
+    ["Flags", flagsCount]
+  ];
+
+  wrap.innerHTML = items
+    .map(([label, value]) => `<div class="summary-item">${text(label)}: ${text(value)}</div>`)
+    .join("");
+}
+
+function getDraftPayload() {
+  return {
+    incident: clone(state.incident),
+    responders: clone(state.responders),
+    agencies: clone(state.agencies),
+    ui: {
+      currentPage: state.ui.currentPage,
+      previewUrl: state.ui.previewUrl,
+      hosesOpen: state.ui.hosesOpen
+    },
+    savedAt: new Date().toISOString()
+  };
+}
+
+function isMeaningfulDraft(payload) {
+  if (!payload) return false;
+
+  const { incident, responders, agencies, ui } = payload;
+  return Boolean(
+    incident?.eventNumber ||
+    incident?.pagerDate ||
+    incident?.pagerTime ||
+    incident?.brigadeCode ||
+    incident?.incidentType ||
+    incident?.actualLocation ||
+    incident?.comments ||
+    incident?.brigadesOnScene?.length ||
+    agencies?.length ||
+    responders?.connewarre?.some((r) => r.name?.trim()) ||
+    responders?.mtd?.some((r) => r.name?.trim()) ||
+    ui?.previewUrl
+  );
+}
+
+function saveDraft() {
+  const payload = getDraftPayload();
+  localStorage.setItem(STORAGE_KEYS.DRAFT, JSON.stringify(payload));
+  state.ui.lastDraftSavedAt = payload.savedAt;
+  updateDraftMeta(
+    `Draft autosaved ${new Date(payload.savedAt).toLocaleTimeString("en-AU", {
+      hour: "2-digit",
+      minute: "2-digit"
+    })}.`
+  );
+}
+
+function scheduleDraftSave() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveDraft, CONFIG.DRAFT_SAVE_DELAY_MS);
+}
+
+function forceDraftSave() {
+  clearTimeout(draftSaveTimer);
+  saveDraft();
+  const stamp = new Date().toLocaleTimeString("en-AU", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+  updateDraftMeta(`Draft saved manually at ${stamp}.`);
+}
+
+function restoreDraftIfPresent() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DRAFT);
+    if (!raw) return;
+
+    const payload = JSON.parse(raw);
+    if (!isMeaningfulDraft(payload)) return;
+
+    state.incident = { ...DEFAULT_INCIDENT(), ...payload.incident };
+    state.responders = {
+      connewarre: Array.isArray(payload.responders?.connewarre) ? payload.responders.connewarre : [],
+      mtd: Array.isArray(payload.responders?.mtd) ? payload.responders.mtd : [],
+      applianceCodes: {
+        t1: payload.responders?.applianceCodes?.t1 || "",
+        t2: payload.responders?.applianceCodes?.t2 || "",
+        mtd: payload.responders?.applianceCodes?.mtd || ""
+      }
+    };
+    state.agencies = Array.isArray(payload.agencies) ? payload.agencies : [];
+    state.ui.currentPage = "incidentPage";
+    state.ui.previewUrl = payload.ui?.previewUrl || "";
+    state.ui.hosesOpen = Boolean(payload.ui?.hosesOpen);
+    state.ui.restoredDraft = true;
+    state.ui.lastDraftSavedAt = payload.savedAt || "";
+  } catch {}
+}
+
+function renderDraftRestoreBanner() {
+  const banner = el("draftRestoreBanner");
+  const textEl = el("draftRestoreText");
+  if (!banner || !textEl) return;
+
+  if (!state.ui.restoredDraft) {
+    banner.classList.add("hidden");
+    return;
+  }
+
+  const stamp = state.ui.lastDraftSavedAt
+    ? new Date(state.ui.lastDraftSavedAt).toLocaleString("en-AU")
+    : "this device";
+
+  textEl.textContent = `Draft restored from ${stamp}.`;
+  banner.classList.remove("hidden");
+}
+
+function clearDraft() {
+  const confirmed = window.confirm("Clear the current local draft from this device?");
+  if (!confirmed) return;
+
+  localStorage.removeItem(STORAGE_KEYS.DRAFT);
+  state.ui.restoredDraft = false;
+  state.ui.lastDraftSavedAt = "";
+  el("draftRestoreBanner")?.classList.add("hidden");
+  updateDraftMeta("Local draft cleared.");
+}
+
+function updateDraftMeta(message) {
+  const target = el("draftMeta");
+  if (target) target.textContent = message;
 }
 
 async function copyAppLink() {
