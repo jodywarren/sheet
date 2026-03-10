@@ -103,21 +103,39 @@ document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
   console.log("TURNOUT SHEET VERSION", CONFIG.APP_VERSION, window.location.href);
+
   setAppVersion();
   populateDistanceDropdown();
-  await loadMemberLists();
   loadProfile();
   loadSavedReports();
   restoreDraftIfPresent();
   normaliseResponderState();
   ensureRows();
+
   bindStaticEvents();
   bindIncidentEvents();
   bindConnectionEvents();
   registerServiceWorker();
+
   renderEverything();
   updateConnectionBanner();
   updateDraftMeta("Draft autosave ready.");
+
+  try {
+    await loadMemberLists();
+    renderResponders();
+  } catch (error) {
+    console.error("Member list load failed:", error);
+  }
+}
+
+  try {
+    await loadMemberLists();
+    renderResponders();
+  } catch (error) {
+    console.error("Member list load failed:", error);
+  }
+}
 }
   setAppVersion();
   populateDistanceDropdown();
