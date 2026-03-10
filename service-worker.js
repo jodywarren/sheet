@@ -1,4 +1,4 @@
-const CACHE_NAME = "turnout-sheet-v2-0-3";
+const CACHE_NAME = "turnout-sheet-v2-0-6";
 const APP_SHELL = [
   "./",
   "./index.html",
