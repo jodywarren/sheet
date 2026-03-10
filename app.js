@@ -129,31 +129,6 @@ async function init() {
   }
 }
 
-  try {
-    await loadMemberLists();
-    renderResponders();
-  } catch (error) {
-    console.error("Member list load failed:", error);
-  }
-}
-}
-  setAppVersion();
-  populateDistanceDropdown();
-  await loadMemberLists();
-  loadProfile();
-  loadSavedReports();
-  restoreDraftIfPresent();
-  normaliseResponderState();
-  ensureRows();
-  bindStaticEvents();
-  bindIncidentEvents();
-  bindConnectionEvents();
-  registerServiceWorker();
-  renderEverything();
-  updateConnectionBanner();
-  updateDraftMeta("Draft autosave ready.");
-}
-
 function el(id) {
   return document.getElementById(id);
 }
@@ -1199,7 +1174,7 @@ function renderAgencies() {
 
 function toggleFlag(key, buttonId) {
   state.incident.flags[key] = !state.incident.flags[key];
-  el(buttonId).classList.toggle("active", state.incident.flags[key]);
+  el(buttonId)?.classList.toggle("active", state.incident.flags[key]);
   markReportStale();
   scheduleDraftSave();
   updateReportSummary();
