@@ -102,6 +102,23 @@ let draftSaveTimer = null;
 document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
+  console.log("TURNOUT SHEET VERSION", CONFIG.APP_VERSION, window.location.href);
+  setAppVersion();
+  populateDistanceDropdown();
+  await loadMemberLists();
+  loadProfile();
+  loadSavedReports();
+  restoreDraftIfPresent();
+  normaliseResponderState();
+  ensureRows();
+  bindStaticEvents();
+  bindIncidentEvents();
+  bindConnectionEvents();
+  registerServiceWorker();
+  renderEverything();
+  updateConnectionBanner();
+  updateDraftMeta("Draft autosave ready.");
+}
   setAppVersion();
   populateDistanceDropdown();
   await loadMemberLists();
