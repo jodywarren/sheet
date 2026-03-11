@@ -1707,9 +1707,6 @@ function buildOperationalStatusLine() {
 
   return "";
 }
-
-  return "";
-}
   const name = (state.incident.controlName || "").trim();
   const role = (state.incident.brigadeRole || "").trim();
   if (!name && !role) return "";
