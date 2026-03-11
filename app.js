@@ -25,6 +25,21 @@ const MEMBER_FILES = {
   FRES: "FRES.members.json"
 };
 
+const KNOWN_PAGED_UNITS = new Set([
+  "CONN",
+  "GROV",
+  "FRES",
+  "BARW",
+  "P64",
+  "P63B",
+  "TRQY",
+  "STHB1",
+  "MTDU",
+  "R63",
+  "AFPR",
+  "MODE"
+]);
+
 const DEFAULT_INCIDENT = () => ({
   eventNumber: "F",
   pagerDate: "",
@@ -756,6 +771,11 @@ function normalizeOcrText(textValue) {
     .replace(/STRUCI/g, "STRUC1")
     .replace(/INCII/g, "INCI1")
     .replace(/RESCCI/g, "RESCC1")
+    .replace(/2&8\s*\\T/g, "MT DUNEED ALL")
+    .replace(/2&8\s*VT/g, "MT DUNEED ALL")
+    .replace(/2&8\s*T/g, "MT DUNEED ALL")
+    .replace(/MT\s*DUNEED\s*AIL/g, "MT DUNEED ALL")
+    .replace(/MT\s*DUNEED\s*ALLL/g, "MT DUNEED ALL")
     .replace(/[^\S\n]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .toUpperCase()
@@ -887,6 +907,13 @@ function extractPagedUnits(textValue, eventNumber) {
     working = working.replace(eventNumber, " ");
   }
 
+ function extractPagedUnits(textValue, eventNumber) {
+  let working = String(textValue || "");
+
+  if (eventNumber) {
+    working = working.replace(eventNumber, " ");
+  }
+
   const tokens = working
     .split(/\s+/)
     .map((token) => token.replace(/[^A-Z0-9]/g, ""))
@@ -906,13 +933,38 @@ function extractPagedUnits(textValue, eventNumber) {
     "ADMIN",
     "FP",
     "F",
-    "AFPR",
+    "AFPRALL",
     "CONNEWARRE",
     "BRIGADE",
     "ALL",
     "MT",
     "DUNEED"
   ]);
+
+  const units = [];
+
+  tokens.forEach((token) => {
+    if (ignore.has(token)) return;
+    if (/^\d+$/.test(token)) return;
+    if (/^F\d{6,}$/.test(token)) return;
+    if (/^[A-Z]{4}C[13]$/.test(token)) return;
+    if (/^ALARC[13]$/.test(token)) return;
+    if (/^STRUC[13]$/.test(token)) return;
+    if (/^INCI[13]$/.test(token)) return;
+    if (/^RESCC[13]$/.test(token)) return;
+
+    let normalized = token;
+
+    if (token.startsWith("C") && KNOWN_PAGED_UNITS.has(token.slice(1))) {
+      normalized = token.slice(1);
+    }
+
+    if (!KNOWN_PAGED_UNITS.has(normalized)) return;
+    if (!units.includes(normalized)) units.push(normalized);
+  });
+
+  return units;
+}
 
   const units = [];
 
@@ -1627,6 +1679,37 @@ function buildHosesLine() {
 }
 
 function buildControlLine() {
+  const name = (state.incident.controlName || "").trim();
+  const role = (state.incident.brigadeRole || "").trim();
+  if (!name && !role) return "";
+
+  const controlText = name
+    ? `${name}${name.toUpperCase().endsWith("CONTROL") ? "" : " Control"}`
+    : "Control";
+
+  return role ? `${controlText} | ${role}` : controlText;
+}
+
+function getSupportTargetFromBrigadeCode() {
+  const code = String(state.incident.brigadeCode || "").trim().toUpperCase();
+
+  const targets = ["GROV", "FRES", "BARW", "TRQY", "MTDU"];
+  return targets.find((target) => code.startsWith(target)) || "";
+}
+
+function buildOperationalStatusLine() {
+  if (state.incident.brigadeRole === "Primary") return "Primary";
+
+  if (state.incident.brigadeRole === "Support") {
+    const target = getSupportTargetFromBrigadeCode();
+    return target ? `Support to ${target}` : "Support";
+  }
+
+  return "";
+}
+
+  return "";
+}
   const name = (state.incident.controlName || "").trim();
   const role = (state.incident.brigadeRole || "").trim();
   if (!name && !role) return "";
