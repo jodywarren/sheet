@@ -1761,9 +1761,12 @@ function buildReport() {
   pushLine(lines, "Event Number", state.incident.eventNumber);
   if (lines.length) lines.push("");
 
-  const operationalStatus = buildOperationalStatusLine();
-  if (operationalStatus) lines.push(operationalStatus);
-
+ const operationalStatus = buildOperationalStatusLine();
+if (operationalStatus) {
+  lines.push(operationalStatus);
+  lines.push("");
+}
+  
   pushLine(lines, "Pager Date / Time", buildPagerDateTime());
   pushLine(lines, "Appliances", buildApplianceCodeLine());
 
