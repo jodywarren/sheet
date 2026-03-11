@@ -1759,6 +1759,11 @@ function buildReport() {
   const lines = [];
 
   pushLine(lines, "Event Number", state.incident.eventNumber);
+  if (lines.length) lines.push("");
+
+  const operationalStatus = buildOperationalStatusLine();
+  if (operationalStatus) lines.push(operationalStatus);
+
   pushLine(lines, "Pager Date / Time", buildPagerDateTime());
   pushLine(lines, "Appliances", buildApplianceCodeLine());
 
@@ -1769,9 +1774,78 @@ function buildReport() {
   }
 
   pushLine(lines, "Actual Location", state.incident.actualLocation);
-  pushLine(lines, "Control", buildControlLine());
+  pushLine(lines, "Control Name", buildControlLine());
 
   const firstAgency = state.incident.firstAgency === "Other"
+    ? state.incident.firstAgencyOther
+    : state.incident.firstAgency;
+
+  pushLine(lines, "First Agency On Scene", firstAgency);
+  pushLine(lines, "Brigades On Scene", state.incident.brigadesOnScene.join(", "));
+  pushLine(lines, "Weather", buildWeatherLine());
+  pushLine(lines, "Distance to Scene", state.incident.distanceToScene);
+  pushLine(lines, "Hoses Used", buildHosesLine());
+
+  if (state.agencies.length) {
+    lines.push("");
+    lines.push("Agency Details");
+
+    state.agencies.forEach((a, i) => {
+      lines.push(`${i + 1}. ${a.type === "Other" ? (a.otherName || "Other") : a.type}`);
+      pushLine(lines, "Officer", a.officerName);
+      pushLine(lines, "Contact", a.contactNumber);
+      pushLine(lines, "Station", a.station);
+      pushLine(lines, "Badge", a.badgeNumber);
+      pushLine(lines, "Comments", a.comments);
+    });
+  }
+
+  pushLine(lines, "FIRS Code", state.incident.firsCode);
+
+  buildRespondersSection(lines);
+
+  if (state.incident.comments.trim()) {
+    lines.push("");
+    lines.push("Comments");
+    lines.push(state.incident.comments.trim());
+  }
+
+  const flags = [];
+
+  if (state.incident.flags.membersBefore) flags.push("Members direct before 1st appliance");
+  if (state.incident.flags.aar) flags.push("AAR required");
+  if (state.incident.flags.hotDebrief) flags.push("Hot debrief conducted");
+  if (isInjuriesFlagActive()) flags.push("Injuries");
+
+  const signalsLine = buildSignalsLine();
+
+  if (flags.length || state.incident.injuryNotes.trim() || signalsLine) {
+    lines.push("");
+    lines.push("Incident Flags");
+
+    flags.forEach((f) => lines.push(`- ${f}`));
+
+    if (state.incident.injuryNotes.trim()) {
+      lines.push(`Injury Notes: ${state.incident.injuryNotes.trim()}`);
+    }
+
+    if (signalsLine) {
+      lines.push(`Signal: ${signalsLine}`);
+    }
+  }
+
+  lines.push("");
+  lines.push("Created by");
+
+  pushLine(lines, "Name", state.profile.name);
+  pushLine(lines, "Brigade", state.profile.brigade);
+  pushLine(lines, "CFA Member Number", state.profile.memberNumber);
+  pushLine(lines, "Contact Number", state.profile.contactNumber);
+
+  return lines.join("\n");
+}
+
+const firstAgency = state.incident.firstAgency === "Other"
     ? state.incident.firstAgencyOther
     : state.incident.firstAgency;
   pushLine(lines, "First Agency On Scene", firstAgency);
